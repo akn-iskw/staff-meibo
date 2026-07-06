@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>社員名簿システム</title>
+<title>ウィズ 社員名簿</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
@@ -214,13 +214,82 @@
   .toolbar{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:8px; }
   .count-badge{ font-size:12px; color:var(--muted); }
   .empty-msg{ font-size:13px; color:var(--muted); padding:20px 0; text-align:center; }
+
+  /* 編集モーダル */
+  .modal-overlay{
+    position:fixed; inset:0;
+    background:rgba(20,25,35,0.45);
+    display:flex; align-items:center; justify-content:center;
+    padding:16px;
+    z-index:100;
+  }
+  .modal{
+    background:#fff;
+    border-radius:12px;
+    padding:24px;
+    width:100%;
+    max-width:680px;
+    max-height:90vh;
+    overflow-y:auto;
+  }
+  .modal h2{ font-size:16px; color:var(--navy); margin:0 0 16px; }
+  .modal-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px 16px;
+  }
+  .modal-grid .field.full{ grid-column:1 / -1; }
+  .modal-grid label{ display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .modal-grid input, .modal-grid select, .modal-grid textarea{
+    width:100%;
+    padding:8px 10px;
+    font-size:13px;
+    border:1px solid var(--border);
+    border-radius:6px;
+    font-family:inherit;
+  }
+  .modal-grid textarea{ min-height:56px; resize:vertical; }
+  .modal-actions{
+    display:flex; align-items:center; gap:10px;
+    margin-top:20px;
+  }
+  button.danger{
+    padding:9px 16px;
+    font-size:13px;
+    font-weight:600;
+    color:var(--err);
+    background:#fff;
+    border:1px solid var(--err);
+    border-radius:8px;
+    cursor:pointer;
+  }
+  button.danger:hover{ background:#FBEAEA; }
+  #modalError{ color:var(--err); font-size:12px; margin-top:10px; }
+  .edit-btn{
+    padding:4px 10px;
+    font-size:12px;
+    color:var(--navy);
+    background:#fff;
+    border:1px solid var(--navy);
+    border-radius:14px;
+    cursor:pointer;
+  }
+  .edit-btn:hover{ background:var(--blue-light); }
+  .name-link{
+    color:var(--navy);
+    font-weight:600;
+    cursor:pointer;
+    text-decoration:underline;
+    text-decoration-color:transparent;
+  }
+  .name-link:hover{ text-decoration-color:var(--navy); }
 </style>
 </head>
 <body>
 
 <div id="loginView">
   <div class="login-card">
-    <h1>社員名簿システム ログイン</h1>
+    <h1>ウィズ 社員名簿 ログイン</h1>
     <div class="field">
       <label>メールアドレス</label>
       <input type="email" id="loginEmail" autocomplete="username">
@@ -236,7 +305,7 @@
 
 <div id="appView" class="hidden">
   <header class="appbar">
-    <h1>社員名簿システム</h1>
+    <h1>ウィズ 社員名簿</h1>
     <div class="user-info">
       <span id="userEmail"></span>
       <button id="logoutBtn">ログアウト</button>
@@ -259,6 +328,7 @@
       <div class="toolbar">
         <h2 style="margin:0;">社員一覧</h2>
         <div style="display:flex; gap:8px; align-items:center;">
+          <button class="secondary" id="addBtn">＋ 新規追加</button>
           <button class="secondary" id="refreshBtn">再読み込み</button>
           <button class="secondary" id="exportBtn">Excelでダウンロード</button>
         </div>
@@ -267,6 +337,20 @@
       <div id="rosterArea"></div>
     </div>
   </main>
+</div>
+
+<div id="modalOverlay" class="modal-overlay hidden">
+  <div class="modal">
+    <h2 id="modalTitle">社員情報を編集</h2>
+    <div class="modal-grid" id="modalGrid"></div>
+    <div class="modal-actions">
+      <button class="danger hidden" id="modalDeleteBtn">削除</button>
+      <div style="flex:1;"></div>
+      <button class="secondary" id="modalCancelBtn">キャンセル</button>
+      <button class="primary" id="modalSaveBtn">保存</button>
+    </div>
+    <div id="modalError"></div>
+  </div>
 </div>
 
 <script>
@@ -524,6 +608,8 @@ function renderUploadLog(inserted, skipped, warnings, insertError, facility){
 }
 
 /* ---------- 一覧表示 ---------- */
+let currentEmployees = [];
+
 async function loadRoster(facility){
   const area = document.getElementById('rosterArea');
   area.innerHTML = '<div class="empty-msg">読み込み中...</div>';
@@ -532,37 +618,36 @@ async function loadRoster(facility){
     area.innerHTML = `<div class="empty-msg" style="color:var(--err);">読み込みに失敗しました：${error.message}</div>`;
     return;
   }
-  if (!data || !data.length){
+  currentEmployees = data || [];
+  if (!currentEmployees.length){
     area.innerHTML = `<div class="empty-msg">「${facility}」にはまだ社員データがありません</div>`;
     return;
   }
-  const rows = data.map(e => {
-    const age = e.birth_date ? calcYears(new Date(e.birth_date), new Date()) : '';
+  const rows = currentEmployees.map(e => {
     const tenureEnd = e.resignation_date ? new Date(e.resignation_date) : new Date();
     const tenure = e.hire_date ? calcTenure(new Date(e.hire_date), tenureEnd) : '';
     return `<tr>
       <td>${e.employee_no ?? ''}</td>
-      <td>${e.name ?? ''}</td>
-      <td>${e.kana ?? ''}</td>
-      <td>${e.gender ?? ''}</td>
-      <td>${age}</td>
+      <td><span class="name-link" data-id="${e.id}">${e.name ?? ''}</span></td>
       <td>${e.department_job ?? ''}</td>
-      <td>${e.employment_type ?? ''}</td>
       <td>${fmtDate(e.hire_date)}</td>
       <td>${tenure}</td>
-      <td>${e.phone ?? ''}</td>
-      <td>${e.remarks ?? ''}</td>
     </tr>`;
   }).join('');
   area.innerHTML = `
-    <div class="count-badge">${data.length}名</div>
+    <div class="count-badge">${currentEmployees.length}名</div>
     <table class="roster">
       <thead><tr>
-        <th>社員番号</th><th>氏名</th><th>フリガナ</th><th>性別</th><th>年齢</th>
-        <th>職種</th><th>雇用形態</th><th>入社日</th><th>勤続</th><th>電話番号</th><th>備考</th>
+        <th>社員番号</th><th>氏名</th><th>職種</th><th>入社日</th><th>勤続年数</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+  area.querySelectorAll('.name-link').forEach(el => {
+    el.addEventListener('click', () => {
+      const emp = currentEmployees.find(e => String(e.id) === el.dataset.id);
+      if (emp) openModal(emp);
+    });
+  });
 }
 
 function calcYears(from, to){
@@ -582,6 +667,110 @@ function calcTenure(from, to){
 }
 
 document.getElementById('refreshBtn').addEventListener('click', () => loadRoster(currentFacility));
+
+/* ---------- 編集・新規追加モーダル ---------- */
+const MODAL_FIELDS = [
+  { key:'facility', label:'施設', type:'select', options: FACILITIES },
+  { key:'employee_no', label:'社員番号', type:'number' },
+  { key:'name', label:'氏名（漢字）', type:'text' },
+  { key:'kana', label:'氏名（フリガナ）', type:'text' },
+  { key:'gender', label:'性別', type:'select', options:['男性','女性'] },
+  { key:'birth_date', label:'生年月日', type:'date' },
+  { key:'zip', label:'郵便番号', type:'text' },
+  { key:'address', label:'住所', type:'text' },
+  { key:'phone', label:'電話番号', type:'text' },
+  { key:'emergency_contact_name', label:'緊急連絡先氏名', type:'text' },
+  { key:'emergency_contact_relation', label:'続柄', type:'text' },
+  { key:'emergency_contact_phone', label:'緊急連絡先電話番号', type:'text' },
+  { key:'department_job', label:'部署・職種', type:'text' },
+  { key:'employment_type', label:'雇用形態', type:'select', options:['正社員','契約社員','パート','その他'] },
+  { key:'hire_date', label:'入社日', type:'date' },
+  { key:'resignation_date', label:'退職日', type:'date' },
+  { key:'qualification_1', label:'保有資格1', type:'text' },
+  { key:'qualification_1_date', label:'資格取得日1', type:'date' },
+  { key:'qualification_2', label:'保有資格2', type:'text' },
+  { key:'qualification_2_date', label:'資格取得日2', type:'date' },
+  { key:'qualification_3', label:'保有資格3', type:'text' },
+  { key:'qualification_3_date', label:'資格取得日3', type:'date' },
+  { key:'remarks', label:'備考', type:'textarea' },
+];
+
+const modalOverlay = document.getElementById('modalOverlay');
+const modalTitle = document.getElementById('modalTitle');
+const modalGrid = document.getElementById('modalGrid');
+const modalDeleteBtn = document.getElementById('modalDeleteBtn');
+const modalCancelBtn = document.getElementById('modalCancelBtn');
+const modalSaveBtn = document.getElementById('modalSaveBtn');
+const modalError = document.getElementById('modalError');
+let currentEditId = null;
+
+function escapeAttr(v){
+  return String(v ?? '').replace(/"/g, '&quot;');
+}
+
+function renderModalField(f, employee){
+  const val = employee ? (employee[f.key] ?? '') : (f.key === 'facility' ? currentFacility : '');
+  if (f.type === 'select'){
+    const opts = f.options.map(o => `<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('');
+    return `<div class="field"><label>${f.label}</label><select data-key="${f.key}"><option value="">-</option>${opts}</select></div>`;
+  }
+  if (f.type === 'textarea'){
+    return `<div class="field full"><label>${f.label}</label><textarea data-key="${f.key}">${val ?? ''}</textarea></div>`;
+  }
+  return `<div class="field"><label>${f.label}</label><input type="${f.type}" data-key="${f.key}" value="${escapeAttr(val)}"></div>`;
+}
+
+function openModal(employee){
+  currentEditId = employee ? employee.id : null;
+  modalTitle.textContent = employee ? '社員情報を編集' : '社員を新規追加';
+  modalGrid.innerHTML = MODAL_FIELDS.map(f => renderModalField(f, employee)).join('');
+  modalDeleteBtn.classList.toggle('hidden', !employee);
+  modalError.textContent = '';
+  modalOverlay.classList.remove('hidden');
+}
+
+function closeModal(){
+  modalOverlay.classList.add('hidden');
+  currentEditId = null;
+}
+
+document.getElementById('addBtn').addEventListener('click', () => openModal(null));
+modalCancelBtn.addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+
+modalSaveBtn.addEventListener('click', async () => {
+  const payload = {};
+  modalGrid.querySelectorAll('[data-key]').forEach(el => {
+    let v = el.value;
+    payload[el.dataset.key] = (v === '') ? null : v;
+  });
+  if (payload.employee_no !== null) payload.employee_no = Number(payload.employee_no);
+  if (!payload.facility){ modalError.textContent = '施設を選択してください'; return; }
+
+  modalSaveBtn.disabled = true; modalSaveBtn.textContent = '保存中...';
+  let error;
+  if (currentEditId){
+    ({ error } = await sb.from('employees').update(payload).eq('id', currentEditId));
+  } else {
+    ({ error } = await sb.from('employees').insert([payload]));
+  }
+  modalSaveBtn.disabled = false; modalSaveBtn.textContent = '保存';
+
+  if (error){ modalError.textContent = '保存に失敗しました：' + error.message; return; }
+  closeModal();
+  loadRoster(currentFacility);
+});
+
+modalDeleteBtn.addEventListener('click', async () => {
+  if (!currentEditId) return;
+  if (!confirm('この社員データを削除します。よろしいですか？（元に戻せません）')) return;
+  modalDeleteBtn.disabled = true;
+  const { error } = await sb.from('employees').delete().eq('id', currentEditId);
+  modalDeleteBtn.disabled = false;
+  if (error){ modalError.textContent = '削除に失敗しました：' + error.message; return; }
+  closeModal();
+  loadRoster(currentFacility);
+});
 
 /* ---------- Excel エクスポート ---------- */
 const NAVY = 'FF1F3864';
