@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>社員名簿システム</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+  :root{
+    --navy:#1F3864;
+    --navy-dark:#152647;
+    --blue-light:#D9E2F3;
+    --ink:#2B2B2B;
+    --muted:#6B7280;
+    --ok:#1E7B45;
+    --warn:#B4530A;
+    --err:#B3261E;
+    --bg:#F5F6F8;
+    --card:#FFFFFF;
+    --border:#E1E4EA;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"游ゴシック","Yu Gothic","Hiragino Kaku Gothic ProN",sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  .hidden{display:none !important;}
+
+  /* ログイン画面 */
+  #loginView{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+  }
+  .login-card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:36px 32px;
+    width:100%;
+    max-width:360px;
+    box-shadow:0 2px 12px rgba(0,0,0,0.05);
+  }
+  .login-card h1{
+    font-size:18px;
+    color:var(--navy);
+    margin:0 0 24px;
+    text-align:center;
+  }
+  .field{ margin-bottom:14px; }
+  .field label{
+    display:block;
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:5px;
+  }
+  .field input{
+    width:100%;
+    padding:10px 12px;
+    font-size:14px;
+    border:1px solid var(--border);
+    border-radius:6px;
+    font-family:inherit;
+  }
+  #loginBtn{
+    width:100%;
+    padding:12px;
+    font-size:14px;
+    font-weight:700;
+    color:#fff;
+    background:var(--navy);
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+    margin-top:8px;
+  }
+  #loginBtn:hover{ background:var(--navy-dark); }
+  #loginError{
+    color:var(--err);
+    font-size:12px;
+    margin-top:10px;
+    min-height:16px;
+    text-align:center;
+  }
+
+  /* アプリ本体 */
+  header.appbar{
+    background:var(--navy);
+    color:#fff;
+    padding:14px 20px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  header.appbar h1{
+    font-size:16px;
+    margin:0;
+    font-weight:700;
+  }
+  .user-info{ font-size:12px; opacity:.85; display:flex; align-items:center; gap:12px; }
+  #logoutBtn{
+    background:rgba(255,255,255,0.15);
+    color:#fff;
+    border:1px solid rgba(255,255,255,0.35);
+    padding:6px 12px;
+    border-radius:6px;
+    font-size:12px;
+    cursor:pointer;
+  }
+  #logoutBtn:hover{ background:rgba(255,255,255,0.25); }
+
+  main{ max-width:960px; margin:0 auto; padding:24px 16px 80px; }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:20px 22px;
+    margin-bottom:20px;
+  }
+  .card h2{
+    font-size:15px;
+    color:var(--navy);
+    margin:0 0 14px;
+  }
+
+  .tabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
+  .tab-btn{
+    padding:8px 14px;
+    font-size:13px;
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:20px;
+    cursor:pointer;
+    color:var(--ink);
+  }
+  .tab-btn.active{
+    background:var(--navy);
+    color:#fff;
+    border-color:var(--navy);
+  }
+
+  .file-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px;}
+  input[type=file]{ font-size:13px; }
+  select{
+    font-family:inherit;
+    font-size:14px;
+    padding:8px 10px;
+    border:1px solid var(--border);
+    border-radius:6px;
+    background:#fff;
+    max-width:100%;
+  }
+  .hint{ font-size:12px; color:var(--muted); margin-top:6px; }
+
+  button.primary{
+    padding:10px 18px;
+    font-size:14px;
+    font-weight:700;
+    color:#fff;
+    background:var(--navy);
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+  }
+  button.primary:disabled{ background:#B9C3D6; cursor:not-allowed; }
+  button.primary:not(:disabled):hover{ background:var(--navy-dark); }
+
+  button.secondary{
+    padding:9px 16px;
+    font-size:13px;
+    font-weight:600;
+    color:var(--navy);
+    background:#fff;
+    border:1px solid var(--navy);
+    border-radius:8px;
+    cursor:pointer;
+  }
+  button.secondary:hover{ background:var(--blue-light); }
+
+  table.result, table.roster{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+    margin-top:10px;
+  }
+  table.result th, table.result td, table.roster th, table.roster td{
+    text-align:left;
+    padding:7px 8px;
+    border-bottom:1px solid var(--border);
+    white-space:nowrap;
+  }
+  table.roster{ display:block; overflow-x:auto; }
+  table.result th, table.roster th{
+    color:var(--muted);
+    font-weight:600;
+    font-size:12px;
+    background:#FAFBFC;
+  }
+  table.roster tbody tr:nth-child(odd){ background:#FAFBFF; }
+
+  .log-title{ font-weight:700; font-size:14px; margin-top:16px; }
+  .log-title.ok{ color:var(--ok); }
+  .log-title.warn{ color:var(--warn); }
+  ul.warnings{ margin:8px 0 0; padding-left:18px; font-size:13px; color:var(--warn); }
+
+  .toolbar{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:8px; }
+  .count-badge{ font-size:12px; color:var(--muted); }
+  .empty-msg{ font-size:13px; color:var(--muted); padding:20px 0; text-align:center; }
+</style>
+</head>
+<body>
+
+<div id="loginView">
+  <div class="login-card">
+    <h1>社員名簿システム ログイン</h1>
+    <div class="field">
+      <label>メールアドレス</label>
+      <input type="email" id="loginEmail" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>パスワード</label>
+      <input type="password" id="loginPassword" autocomplete="current-password">
+    </div>
+    <button id="loginBtn">ログイン</button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<div id="appView" class="hidden">
+  <header class="appbar">
+    <h1>社員名簿システム</h1>
+    <div class="user-info">
+      <span id="userEmail"></span>
+      <button id="logoutBtn">ログアウト</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>入社連絡票を反映</h2>
+      <div class="file-row">
+        <select id="facilitySelectUpload"></select>
+        <input type="file" id="formFile" accept=".xlsx">
+        <button class="primary" id="uploadBtn" disabled>反映する</button>
+      </div>
+      <div class="hint">1シート＝1名の入社連絡票（.xlsx）に対応しています。複数名を一括で反映できます。マイナンバー・基礎年金番号などは反映しません。</div>
+      <div id="uploadLog"></div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <h2 style="margin:0;">社員一覧</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="secondary" id="refreshBtn">再読み込み</button>
+          <button class="secondary" id="exportBtn">Excelでダウンロード</button>
+        </div>
+      </div>
+      <div class="tabs" id="facilityTabs"></div>
+      <div id="rosterArea"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://splmrpfagtyrfloltwtl.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_7S56o9cnVJ1Il5m_qmXhVQ_5_AN3Hmb';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const FACILITIES = ['ナーシングホーム寿々デンタル中村', '子都菜', 'おきむら家'];
+let currentFacility = FACILITIES[0];
+
+/* ---------- 認証まわり ---------- */
+const loginView = document.getElementById('loginView');
+const appView = document.getElementById('appView');
+const loginBtn = document.getElementById('loginBtn');
+const loginError = document.getElementById('loginError');
+const logoutBtn = document.getElementById('logoutBtn');
+const userEmailEl = document.getElementById('userEmail');
+
+async function checkSession(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if (session){ showApp(session.user.email); } else { showLogin(); }
+}
+
+function showLogin(){
+  loginView.classList.remove('hidden');
+  appView.classList.add('hidden');
+}
+
+function showApp(email){
+  loginView.classList.add('hidden');
+  appView.classList.remove('hidden');
+  userEmailEl.textContent = email;
+  initFacilityUI();
+  loadRoster(currentFacility);
+}
+
+loginBtn.addEventListener('click', async () => {
+  loginError.textContent = '';
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!email || !password){ loginError.textContent = 'メールアドレスとパスワードを入力してください'; return; }
+  loginBtn.disabled = true; loginBtn.textContent = 'ログイン中...';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  loginBtn.disabled = false; loginBtn.textContent = 'ログイン';
+  if (error){ loginError.textContent = 'ログインできませんでした：' + error.message; return; }
+  showApp(data.user.email);
+});
+
+logoutBtn.addEventListener('click', async () => {
+  await sb.auth.signOut();
+  showLogin();
+});
+
+checkSession();
+
+/* ---------- 施設タブ・アップロード先セレクト ---------- */
+function initFacilityUI(){
+  const tabsEl = document.getElementById('facilityTabs');
+  tabsEl.innerHTML = FACILITIES.map(f =>
+    `<button class="tab-btn ${f===currentFacility?'active':''}" data-facility="${f}">${f}</button>`
+  ).join('');
+  tabsEl.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentFacility = btn.dataset.facility;
+      tabsEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadRoster(currentFacility);
+    });
+  });
+
+  const uploadSelect = document.getElementById('facilitySelectUpload');
+  uploadSelect.innerHTML = FACILITIES.map(f => `<option value="${f}">${f}</option>`).join('');
+}
+
+/* ---------- 入社連絡票の解析（従来ロジック） ---------- */
+function hwKanaToFullWidth(str){
+  if (!str) return str;
+  const dakuten = {
+    'ｶﾞ':'ガ','ｷﾞ':'ギ','ｸﾞ':'グ','ｹﾞ':'ゲ','ｺﾞ':'ゴ',
+    'ｻﾞ':'ザ','ｼﾞ':'ジ','ｽﾞ':'ズ','ｾﾞ':'ゼ','ｿﾞ':'ゾ',
+    'ﾀﾞ':'ダ','ﾁﾞ':'ヂ','ﾂﾞ':'ヅ','ﾃﾞ':'デ','ﾄﾞ':'ド',
+    'ﾊﾞ':'バ','ﾋﾞ':'ビ','ﾌﾞ':'ブ','ﾍﾞ':'ベ','ﾎﾞ':'ボ',
+    'ﾊﾟ':'パ','ﾋﾟ':'ピ','ﾌﾟ':'プ','ﾍﾟ':'ペ','ﾎﾟ':'ポ',
+    'ｳﾞ':'ヴ'
+  };
+  let s = str;
+  Object.keys(dakuten).forEach(k => { s = s.split(k).join(dakuten[k]); });
+  const han = "ｦｧｨｩｪｫｬｭｮｯｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ｡｢｣､･ｰ";
+  const zen = "ヲァィゥェォャュョッアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン。「」、・ー";
+  let out = '';
+  for (const ch of s){
+    const idx = han.indexOf(ch);
+    out += idx >= 0 ? zen[idx] : ch;
+  }
+  return out;
+}
+
+function sheetToAoa(ws){
+  const aoa = [];
+  ws.eachRow({ includeEmpty:true }, (row, rowNumber) => {
+    const arr = [];
+    row.eachCell({ includeEmpty:true }, (cell, colNumber) => { arr[colNumber - 1] = cell.value; });
+    aoa[rowNumber - 1] = arr;
+  });
+  return aoa;
+}
+
+function findLabelRow(aoa, labelSubstr){
+  for (let r = 0; r < aoa.length; r++){
+    const row = aoa[r];
+    if (!row) continue;
+    const cell = row[1]; // 列Aが空のため列Bがindex1
+    if (typeof cell === 'string' && cell.replace(/\s+/g,'').includes(labelSubstr)) return r;
+  }
+  return -1;
+}
+
+function toDate(v){ return v instanceof Date ? v : null; }
+function toISODate(d){ return d instanceof Date ? d.toISOString().slice(0,10) : null; }
+function fmtDate(v){
+  const d = (typeof v === 'string') ? new Date(v) : v;
+  if (!(d instanceof Date) || isNaN(d)) return '';
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}/${m}/${day}`;
+}
+
+function parseEmployeeSheet(ws, warnings, sheetLabel){
+  const aoa = sheetToAoa(ws);
+  const get = (labelSubstr, col=2) => {
+    const r = findLabelRow(aoa, labelSubstr);
+    if (r === -1){ warnings.push(`${sheetLabel}：「${labelSubstr}」の項目が見つかりませんでした`); return null; }
+    return aoa[r][col];
+  };
+  const no = get('社員No');
+  const name = get('氏名');
+  const kanaHW = get('ｼﾒｲ');
+  const genderRaw = get('性別');
+  const birth = toDate(get('生年月日'));
+  const zipRowIdx = findLabelRow(aoa, '〒');
+  const zip = zipRowIdx >= 0 ? aoa[zipRowIdx][2] : null;
+  const phone = zipRowIdx >= 0 ? aoa[zipRowIdx][5] : null;
+  const address = get('住所');
+  const hireDate = toDate(get('入社年月日'));
+  const termRowIdx = findLabelRow(aoa, '雇用期間の定め');
+  const termFlag = termRowIdx >= 0 ? aoa[termRowIdx][2] : null;
+  const termEnd = termRowIdx >= 0 ? toDate(aoa[termRowIdx][6]) : null;
+  const job = get('職種');
+
+  const gender = genderRaw === 1 ? '男性' : (genderRaw === 2 ? '女性' : '');
+  const employType = termFlag === 'なし' ? '正社員' : '契約社員';
+  let remark = '';
+  if (termFlag === 'あり' && termEnd && hireDate){
+    remark = `契約期間：${fmtDate(hireDate)}〜${fmtDate(termEnd)}`;
+  }
+
+  return {
+    employee_no: no,
+    name,
+    kana: kanaHW ? hwKanaToFullWidth(kanaHW) : '',
+    gender,
+    birth_date: toISODate(birth),
+    zip: zip ? String(zip) : null,
+    phone: phone ? String(phone) : null,
+    address,
+    department_job: job || '',
+    employment_type: employType,
+    hire_date: toISODate(hireDate),
+    remarks: remark
+  };
+}
+
+/* ---------- アップロード（Supabaseへ登録） ---------- */
+const formFileInput = document.getElementById('formFile');
+const uploadBtn = document.getElementById('uploadBtn');
+const uploadLog = document.getElementById('uploadLog');
+let pendingWB = null;
+
+formFileInput.addEventListener('change', async () => {
+  const file = formFileInput.files[0];
+  uploadLog.innerHTML = '';
+  if (!file){ uploadBtn.disabled = true; return; }
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await file.arrayBuffer());
+  pendingWB = wb;
+  uploadBtn.disabled = false;
+});
+
+uploadBtn.addEventListener('click', async () => {
+  if (!pendingWB) return;
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = '処理中...';
+
+  const facility = document.getElementById('facilitySelectUpload').value;
+  const warnings = [];
+  const records = pendingWB.worksheets.map(s => parseEmployeeSheet(s, warnings, s.name));
+
+  // 既存の社員番号との重複チェック
+  const nos = records.map(r => r.employee_no).filter(n => n !== null && n !== undefined);
+  let existingNos = new Set();
+  if (nos.length){
+    const { data: existing } = await sb.from('employees').select('employee_no').eq('facility', facility).in('employee_no', nos);
+    if (existing) existingNos = new Set(existing.map(e => e.employee_no));
+  }
+
+  const toInsert = [];
+  const skipped = [];
+  records.forEach(r => {
+    if (r.employee_no !== null && existingNos.has(r.employee_no)){
+      skipped.push(r);
+    } else {
+      toInsert.push({ ...r, facility });
+    }
+  });
+
+  let insertError = null;
+  if (toInsert.length){
+    const { error } = await sb.from('employees').insert(toInsert);
+    insertError = error;
+  }
+
+  uploadBtn.disabled = false;
+  uploadBtn.textContent = '反映する';
+
+  renderUploadLog(toInsert, skipped, warnings, insertError, facility);
+  if (!insertError){
+    formFileInput.value = '';
+    pendingWB = null;
+    if (facility === currentFacility) loadRoster(currentFacility);
+  }
+});
+
+function renderUploadLog(inserted, skipped, warnings, insertError, facility){
+  let html = '';
+  if (insertError){
+    html += `<div class="log-title" style="color:var(--err);">✗ 登録に失敗しました：${insertError.message}</div>`;
+  } else {
+    html += `<div class="log-title ok">✓ ${inserted.length}名を「${facility}」に登録しました</div>`;
+    if (inserted.length){
+      html += `<table class="result"><thead><tr><th>社員番号</th><th>氏名</th><th>職種</th><th>雇用形態</th><th>入社日</th></tr></thead><tbody>`;
+      inserted.forEach(r => {
+        html += `<tr><td>${r.employee_no ?? ''}</td><td>${r.name ?? ''}</td><td>${r.department_job ?? ''}</td><td>${r.employment_type ?? ''}</td><td>${fmtDate(r.hire_date)}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+  }
+  if (skipped.length){
+    html += `<div class="log-title warn">⚠ 社員番号が既に存在するためスキップ：${skipped.map(s=>`${s.employee_no} ${s.name}`).join('、')}</div>`;
+  }
+  if (warnings.length){
+    html += `<div class="log-title warn">⚠ 確認事項</div><ul class="warnings">`;
+    warnings.forEach(w => { html += `<li>${w}</li>`; });
+    html += `</ul>`;
+  }
+  uploadLog.innerHTML = html;
+}
+
+/* ---------- 一覧表示 ---------- */
+async function loadRoster(facility){
+  const area = document.getElementById('rosterArea');
+  area.innerHTML = '<div class="empty-msg">読み込み中...</div>';
+  const { data, error } = await sb.from('employees').select('*').eq('facility', facility).order('employee_no', { ascending:true, nullsFirst:false });
+  if (error){
+    area.innerHTML = `<div class="empty-msg" style="color:var(--err);">読み込みに失敗しました：${error.message}</div>`;
+    return;
+  }
+  if (!data || !data.length){
+    area.innerHTML = `<div class="empty-msg">「${facility}」にはまだ社員データがありません</div>`;
+    return;
+  }
+  const rows = data.map(e => {
+    const age = e.birth_date ? calcYears(new Date(e.birth_date), new Date()) : '';
+    const tenureEnd = e.resignation_date ? new Date(e.resignation_date) : new Date();
+    const tenure = e.hire_date ? calcTenure(new Date(e.hire_date), tenureEnd) : '';
+    return `<tr>
+      <td>${e.employee_no ?? ''}</td>
+      <td>${e.name ?? ''}</td>
+      <td>${e.kana ?? ''}</td>
+      <td>${e.gender ?? ''}</td>
+      <td>${age}</td>
+      <td>${e.department_job ?? ''}</td>
+      <td>${e.employment_type ?? ''}</td>
+      <td>${fmtDate(e.hire_date)}</td>
+      <td>${tenure}</td>
+      <td>${e.phone ?? ''}</td>
+      <td>${e.remarks ?? ''}</td>
+    </tr>`;
+  }).join('');
+  area.innerHTML = `
+    <div class="count-badge">${data.length}名</div>
+    <table class="roster">
+      <thead><tr>
+        <th>社員番号</th><th>氏名</th><th>フリガナ</th><th>性別</th><th>年齢</th>
+        <th>職種</th><th>雇用形態</th><th>入社日</th><th>勤続</th><th>電話番号</th><th>備考</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function calcYears(from, to){
+  if (from > to) return '';
+  let y = to.getFullYear() - from.getFullYear();
+  const m = to.getMonth() - from.getMonth();
+  if (m < 0 || (m === 0 && to.getDate() < from.getDate())) y--;
+  return y;
+}
+function calcTenure(from, to){
+  if (from > to) return '入社前';
+  let y = to.getFullYear() - from.getFullYear();
+  let m = to.getMonth() - from.getMonth();
+  if (to.getDate() < from.getDate()) m--;
+  if (m < 0){ y--; m += 12; }
+  return `${y}年${m}ヶ月`;
+}
+
+document.getElementById('refreshBtn').addEventListener('click', () => loadRoster(currentFacility));
+
+/* ---------- Excel エクスポート ---------- */
+const NAVY = 'FF1F3864';
+const LIGHT_BLUE = 'FFD9E2F3';
+const WHITE = 'FFFFFFFF';
+const FONT_NAME = '游ゴシック';
+
+const EXPORT_COLUMNS = [
+  ['社員番号', 'employee_no', 10, 'n'],
+  ['氏名（漢字）', 'name', 14, 's'],
+  ['氏名（フリガナ）', 'kana', 16, 's'],
+  ['性別', 'gender', 6, 's'],
+  ['生年月日', 'birth_date', 12, 'd'],
+  ['年齢', null, 6, 'formula_age'],
+  ['郵便番号', 'zip', 10, 's'],
+  ['住所', 'address', 28, 's'],
+  ['電話番号', 'phone', 14, 's'],
+  ['緊急連絡先氏名', 'emergency_contact_name', 14, 's'],
+  ['続柄', 'emergency_contact_relation', 8, 's'],
+  ['緊急連絡先電話番号', 'emergency_contact_phone', 16, 's'],
+  ['部署・職種', 'department_job', 14, 's'],
+  ['雇用形態', 'employment_type', 10, 's'],
+  ['入社日', 'hire_date', 12, 'd'],
+  ['勤続年数', null, 8, 'formula_tenure'],
+  ['退職日', 'resignation_date', 12, 'd'],
+  ['保有資格1', 'qualification_1', 16, 's'],
+  ['資格取得日1', 'qualification_1_date', 12, 'd'],
+  ['保有資格2', 'qualification_2', 16, 's'],
+  ['資格取得日2', 'qualification_2_date', 12, 'd'],
+  ['保有資格3', 'qualification_3', 16, 's'],
+  ['資格取得日3', 'qualification_3_date', 12, 'd'],
+  ['備考', 'remarks', 24, 's'],
+];
+
+document.getElementById('exportBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('exportBtn');
+  btn.disabled = true; btn.textContent = '作成中...';
+  try{
+    const wb = new ExcelJS.Workbook();
+    for (const facility of FACILITIES){
+      const { data } = await sb.from('employees').select('*').eq('facility', facility).order('employee_no', { ascending:true, nullsFirst:false });
+      buildFacilitySheet(wb, facility, data || []);
+    }
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const today = new Date();
+    const stamp = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `社員名簿_${stamp}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Excelでダウンロード';
+  }
+});
+
+function buildFacilitySheet(wb, facility, employees){
+  const ws = wb.addWorksheet(facility);
+  ws.views = [{ showGridLines:false }];
+
+  ws.mergeCells(1, 1, 1, EXPORT_COLUMNS.length);
+  const titleCell = ws.getCell(1, 1);
+  titleCell.value = `社員名簿　｜　${facility}`;
+  titleCell.font = { name:FONT_NAME, size:14, bold:true, color:{argb:WHITE} };
+  titleCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:NAVY} };
+  titleCell.alignment = { horizontal:'left', vertical:'middle', indent:1 };
+  ws.getRow(1).height = 28;
+
+  EXPORT_COLUMNS.forEach((col, i) => {
+    const cell = ws.getCell(2, i + 1);
+    cell.value = col[0];
+    cell.font = { name:FONT_NAME, size:10, bold:true, color:{argb:WHITE} };
+    cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:NAVY} };
+    cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    ws.getColumn(i + 1).width = col[2];
+  });
+  ws.getRow(2).height = 32;
+
+  const thin = { style:'thin', color:{argb:'FFBFBFBF'} };
+  const border = { top:thin, bottom:thin, left:thin, right:thin };
+
+  employees.forEach((emp, idx) => {
+    const r = idx + 3;
+    EXPORT_COLUMNS.forEach((col, i) => {
+      const cell = ws.getCell(r, i + 1);
+      const [, field, , type] = col;
+      if (type === 's'){
+        cell.value = emp[field] ?? null;
+      } else if (type === 'n'){
+        cell.value = emp[field] ?? null;
+      } else if (type === 'd'){
+        cell.value = emp[field] ? new Date(emp[field]) : null;
+        cell.numFmt = 'yyyy/mm/dd';
+      } else if (type === 'formula_age'){
+        const birthCol = colLetterOf('生年月日');
+        cell.value = { formula:`IF(${birthCol}${r}="","",DATEDIF(${birthCol}${r},TODAY(),"Y"))` };
+      } else if (type === 'formula_tenure'){
+        const hireCol = colLetterOf('入社日');
+        const leaveCol = colLetterOf('退職日');
+        cell.value = {
+          formula:`IF(${hireCol}${r}="","",IF(${hireCol}${r}>TODAY(),"入社前",DATEDIF(${hireCol}${r},IF(${leaveCol}${r}="",TODAY(),${leaveCol}${r}),"Y")&"年"&DATEDIF(${hireCol}${r},IF(${leaveCol}${r}="",TODAY(),${leaveCol}${r}),"YM")&"ヶ月"))`
+        };
+      }
+      cell.font = { name:FONT_NAME, size:10 };
+      cell.alignment = { horizontal:'left', vertical:'middle' };
+      cell.border = border;
+      if (idx % 2 === 1){
+        cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:LIGHT_BLUE} };
+      }
+    });
+  });
+
+  ws.views = [{ state:'frozen', ySplit:2, showGridLines:false }];
+}
+
+function colLetterOf(headerName){
+  const idx = EXPORT_COLUMNS.findIndex(c => c[0] === headerName);
+  return String.fromCharCode(65 + idx); // A-Z範囲内の想定
+}
+</script>
+</body>
+</html>
