@@ -675,7 +675,7 @@ const MODAL_FIELDS = [
   { key:'name', label:'氏名（漢字）', type:'text' },
   { key:'kana', label:'氏名（フリガナ）', type:'text' },
   { key:'gender', label:'性別', type:'select', options:['男性','女性'] },
-  { key:'birth_date', label:'生年月日', type:'date' },
+  { key:'birth_date', label:'生年月日', type:'textdate' },
   { key:'zip', label:'郵便番号', type:'text' },
   { key:'address', label:'住所', type:'text' },
   { key:'phone', label:'電話番号', type:'text' },
@@ -683,15 +683,17 @@ const MODAL_FIELDS = [
   { key:'emergency_contact_relation', label:'続柄', type:'text' },
   { key:'emergency_contact_phone', label:'緊急連絡先電話番号', type:'text' },
   { key:'department_job', label:'部署・職種', type:'text' },
+  { key:'position_title', label:'役職名', type:'text' },
   { key:'employment_type', label:'雇用形態', type:'select', options:['正社員','契約社員','パート','その他'] },
-  { key:'hire_date', label:'入社日', type:'date' },
-  { key:'resignation_date', label:'退職日', type:'date' },
+  { key:'salary', label:'給与（円）', type:'number' },
+  { key:'hire_date', label:'入社日', type:'textdate' },
+  { key:'resignation_date', label:'退職日', type:'textdate' },
   { key:'qualification_1', label:'保有資格1', type:'text' },
-  { key:'qualification_1_date', label:'資格取得日1', type:'date' },
+  { key:'qualification_1_date', label:'資格取得日1', type:'textdate' },
   { key:'qualification_2', label:'保有資格2', type:'text' },
-  { key:'qualification_2_date', label:'資格取得日2', type:'date' },
+  { key:'qualification_2_date', label:'資格取得日2', type:'textdate' },
   { key:'qualification_3', label:'保有資格3', type:'text' },
-  { key:'qualification_3_date', label:'資格取得日3', type:'date' },
+  { key:'qualification_3_date', label:'資格取得日3', type:'textdate' },
   { key:'remarks', label:'備考', type:'textarea' },
 ];
 
@@ -717,6 +719,9 @@ function renderModalField(f, employee){
   if (f.type === 'textarea'){
     return `<div class="field full"><label>${f.label}</label><textarea data-key="${f.key}">${val ?? ''}</textarea></div>`;
   }
+  if (f.type === 'textdate'){
+    return `<div class="field"><label>${f.label}</label><input type="text" data-key="${f.key}" data-type="date" placeholder="yyyy-mm-dd" value="${escapeAttr(val)}"></div>`;
+  }
   return `<div class="field"><label>${f.label}</label><input type="${f.type}" data-key="${f.key}" value="${escapeAttr(val)}"></div>`;
 }
 
@@ -740,11 +745,22 @@ modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) c
 
 modalSaveBtn.addEventListener('click', async () => {
   const payload = {};
+  let invalidDateLabel = null;
   modalGrid.querySelectorAll('[data-key]').forEach(el => {
-    let v = el.value;
+    let v = el.value.trim();
+    if (el.dataset.type === 'date' && v !== ''){
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)){
+        invalidDateLabel = el.previousElementSibling ? el.previousElementSibling.textContent : el.dataset.key;
+      }
+    }
     payload[el.dataset.key] = (v === '') ? null : v;
   });
+  if (invalidDateLabel){
+    modalError.textContent = `「${invalidDateLabel}」は yyyy-mm-dd の形式で入力してください（例：1990-04-01）`;
+    return;
+  }
   if (payload.employee_no !== null) payload.employee_no = Number(payload.employee_no);
+  if (payload.salary !== null && payload.salary !== undefined) payload.salary = Number(payload.salary);
   if (!payload.facility){ modalError.textContent = '施設を選択してください'; return; }
 
   modalSaveBtn.disabled = true; modalSaveBtn.textContent = '保存中...';
@@ -792,7 +808,9 @@ const EXPORT_COLUMNS = [
   ['続柄', 'emergency_contact_relation', 8, 's'],
   ['緊急連絡先電話番号', 'emergency_contact_phone', 16, 's'],
   ['部署・職種', 'department_job', 14, 's'],
+  ['役職名', 'position_title', 12, 's'],
   ['雇用形態', 'employment_type', 10, 's'],
+  ['給与', 'salary', 10, 'n'],
   ['入社日', 'hire_date', 12, 'd'],
   ['勤続年数', null, 8, 'formula_tenure'],
   ['退職日', 'resignation_date', 12, 'd'],
