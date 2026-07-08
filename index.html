@@ -283,6 +283,53 @@
     text-decoration-color:transparent;
   }
   .name-link:hover{ text-decoration-color:var(--navy); }
+
+  .modal-tabs{ display:flex; gap:6px; margin-bottom:16px; border-bottom:1px solid var(--border); }
+  .modal-tab-btn{
+    padding:8px 16px;
+    font-size:13px;
+    font-weight:600;
+    color:var(--muted);
+    background:none;
+    border:none;
+    border-bottom:2px solid transparent;
+    cursor:pointer;
+    margin-bottom:-1px;
+  }
+  .modal-tab-btn.active{
+    color:var(--navy);
+    border-bottom-color:var(--navy);
+  }
+  .salary-total{
+    font-size:20px;
+    font-weight:700;
+    color:var(--navy);
+    padding:10px 12px;
+    background:var(--blue-light);
+    border-radius:6px;
+  }
+  .salary-hint{ font-size:12px; color:var(--muted); margin:-6px 0 12px; grid-column:1 / -1; }
+
+  .file-row-inline{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .cert-link{
+    color:var(--navy);
+    font-weight:600;
+    cursor:pointer;
+    font-size:13px;
+  }
+  .cert-link:hover{ text-decoration:underline; }
+  .cert-delete-btn{
+    font-size:12px;
+    padding:5px 10px;
+    color:var(--err);
+    background:#fff;
+    border:1px solid var(--err);
+    border-radius:14px;
+    cursor:pointer;
+  }
+  .cert-delete-btn:hover{ background:#FBEAEA; }
+  .cert-file-input{ font-size:12px; max-width:220px; }
+  .cert-disabled-hint{ font-size:12px; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -342,7 +389,12 @@
 <div id="modalOverlay" class="modal-overlay hidden">
   <div class="modal">
     <h2 id="modalTitle">社員情報を編集</h2>
-    <div class="modal-grid" id="modalGrid"></div>
+    <div class="modal-tabs" id="modalTabs">
+      <button type="button" class="modal-tab-btn active" data-tab="basic">基本情報</button>
+      <button type="button" class="modal-tab-btn" data-tab="salary">給与</button>
+    </div>
+    <div class="modal-grid" id="modalGridBasic"></div>
+    <div class="modal-grid hidden" id="modalGridSalary"></div>
     <div class="modal-actions">
       <button class="danger hidden" id="modalDeleteBtn">削除</button>
       <div style="flex:1;"></div>
@@ -685,7 +737,6 @@ const MODAL_FIELDS = [
   { key:'department_job', label:'部署・職種', type:'text' },
   { key:'position_title', label:'役職名', type:'text' },
   { key:'employment_type', label:'雇用形態', type:'select', options:['正社員','契約社員','パート','その他'] },
-  { key:'salary', label:'給与（円）', type:'number' },
   { key:'hire_date', label:'入社日', type:'textdate' },
   { key:'resignation_date', label:'退職日', type:'textdate' },
   { key:'qualification_1', label:'保有資格1', type:'text' },
@@ -697,14 +748,63 @@ const MODAL_FIELDS = [
   { key:'remarks', label:'備考', type:'textarea' },
 ];
 
+const SALARY_FIELDS = [
+  { key:'base_salary', label:'ベース給' },
+  { key:'allowance_job', label:'職務手当' },
+  { key:'allowance_treatment', label:'処遇手当' },
+  { key:'allowance_position', label:'役職手当' },
+  { key:'allowance_qualification', label:'資格手当' },
+  { key:'allowance_role', label:'役割手当' },
+  { key:'allowance_adjustment', label:'調整手当' },
+  { key:'allowance_commute', label:'通勤手当' },
+];
+
 const modalOverlay = document.getElementById('modalOverlay');
 const modalTitle = document.getElementById('modalTitle');
-const modalGrid = document.getElementById('modalGrid');
+const modalGrid = document.getElementById('modalGridBasic');
+const modalGridSalary = document.getElementById('modalGridSalary');
+const modalTabs = document.getElementById('modalTabs');
 const modalDeleteBtn = document.getElementById('modalDeleteBtn');
 const modalCancelBtn = document.getElementById('modalCancelBtn');
 const modalSaveBtn = document.getElementById('modalSaveBtn');
 const modalError = document.getElementById('modalError');
 let currentEditId = null;
+
+modalTabs.querySelectorAll('.modal-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    modalTabs.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const isSalary = btn.dataset.tab === 'salary';
+    modalGrid.classList.toggle('hidden', isSalary);
+    modalGridSalary.classList.toggle('hidden', !isSalary);
+  });
+});
+
+function renderSalaryGrid(employee){
+  const rows = SALARY_FIELDS.map(f => {
+    const val = employee ? (employee[f.key] ?? '') : '';
+    return `<div class="field"><label>${f.label}</label><input type="number" data-key="${f.key}" class="salary-input" value="${escapeAttr(val)}"></div>`;
+  }).join('');
+  const total = SALARY_FIELDS.reduce((sum, f) => sum + (employee && employee[f.key] ? Number(employee[f.key]) : 0), 0);
+  return `
+    <div class="salary-hint">ベース給と各種手当を入力すると、合計（給与）が自動計算されます。</div>
+    ${rows}
+    <div class="field full">
+      <label>合計（給与）</label>
+      <div class="salary-total" id="salaryTotalDisplay">¥${total.toLocaleString()}</div>
+    </div>`;
+}
+
+function recalcSalaryTotal(){
+  let total = 0;
+  modalGridSalary.querySelectorAll('.salary-input').forEach(el => {
+    const v = Number(el.value);
+    if (!isNaN(v)) total += v;
+  });
+  const disp = document.getElementById('salaryTotalDisplay');
+  if (disp) disp.textContent = `¥${total.toLocaleString()}`;
+}
+modalGridSalary.addEventListener('input', recalcSalaryTotal);
 
 function escapeAttr(v){
   return String(v ?? '').replace(/"/g, '&quot;');
@@ -725,13 +825,80 @@ function renderModalField(f, employee){
   return `<div class="field"><label>${f.label}</label><input type="${f.type}" data-key="${f.key}" value="${escapeAttr(val)}"></div>`;
 }
 
+function renderCertRow(index, employee){
+  const path = employee ? employee[`qualification_${index}_file`] : null;
+  const content = path
+    ? `<span class="cert-link" data-path="${escapeAttr(path)}">📄 保存済みファイルを開く</span>
+       <button type="button" class="cert-delete-btn" data-index="${index}">削除</button>`
+    : `<input type="file" class="cert-file-input" data-index="${index}" accept="application/pdf,image/*">`;
+  return `<div class="field full" id="certRow${index}">
+    <label>資格証ファイル${index}（PDF・画像）</label>
+    <div class="file-row-inline">${employee ? content : '<span class="cert-disabled-hint">社員情報を保存すると、資格証をアップロードできるようになります</span>'}</div>
+  </div>`;
+}
+
 function openModal(employee){
   currentEditId = employee ? employee.id : null;
   modalTitle.textContent = employee ? '社員情報を編集' : '社員を新規追加';
-  modalGrid.innerHTML = MODAL_FIELDS.map(f => renderModalField(f, employee)).join('');
+  const remarksIdx = MODAL_FIELDS.findIndex(f => f.key === 'remarks');
+  const before = MODAL_FIELDS.slice(0, remarksIdx).map(f => renderModalField(f, employee)).join('');
+  const after = MODAL_FIELDS.slice(remarksIdx).map(f => renderModalField(f, employee)).join('');
+  const certRows = [1, 2, 3].map(i => renderCertRow(i, employee)).join('');
+  modalGrid.innerHTML = before + certRows + after;
+  modalGridSalary.innerHTML = renderSalaryGrid(employee);
+  modalTabs.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
+  modalTabs.querySelector('[data-tab="basic"]').classList.add('active');
+  modalGrid.classList.remove('hidden');
+  modalGridSalary.classList.add('hidden');
   modalDeleteBtn.classList.toggle('hidden', !employee);
   modalError.textContent = '';
   modalOverlay.classList.remove('hidden');
+}
+
+modalGrid.addEventListener('change', async (e) => {
+  if (!e.target.matches('.cert-file-input')) return;
+  const index = e.target.dataset.index;
+  const file = e.target.files[0];
+  if (!file) return;
+  await uploadCertificate(index, file);
+});
+
+modalGrid.addEventListener('click', async (e) => {
+  const link = e.target.closest('.cert-link');
+  if (link){ openCertificate(link.dataset.path); return; }
+  const delBtn = e.target.closest('.cert-delete-btn');
+  if (delBtn){ await deleteCertificate(delBtn.dataset.index); return; }
+});
+
+async function uploadCertificate(index, file){
+  if (!currentEditId) return;
+  const colKey = `qualification_${index}_file`;
+  const path = `${currentEditId}/qualification_${index}_${Date.now()}_${file.name}`;
+  const { error: upErr } = await sb.storage.from('certificates').upload(path, file, { upsert:true });
+  if (upErr){ alert('アップロードに失敗しました：' + upErr.message); return; }
+  const { error: updErr } = await sb.from('employees').update({ [colKey]: path }).eq('id', currentEditId);
+  if (updErr){ alert('データベースの更新に失敗しました：' + updErr.message); return; }
+  const emp = currentEmployees.find(e => e.id === currentEditId);
+  if (emp) emp[colKey] = path;
+  document.getElementById(`certRow${index}`).outerHTML = renderCertRow(index, emp);
+}
+
+async function openCertificate(path){
+  const { data, error } = await sb.storage.from('certificates').createSignedUrl(path, 300);
+  if (error){ alert('ファイルを開けませんでした：' + error.message); return; }
+  window.open(data.signedUrl, '_blank');
+}
+
+async function deleteCertificate(index){
+  if (!confirm('この資格証ファイルを削除します。よろしいですか？')) return;
+  const emp = currentEmployees.find(e => e.id === currentEditId);
+  const colKey = `qualification_${index}_file`;
+  const path = emp ? emp[colKey] : null;
+  if (path){ await sb.storage.from('certificates').remove([path]); }
+  const { error } = await sb.from('employees').update({ [colKey]: null }).eq('id', currentEditId);
+  if (error){ alert('削除に失敗しました：' + error.message); return; }
+  if (emp) emp[colKey] = null;
+  document.getElementById(`certRow${index}`).outerHTML = renderCertRow(index, emp);
 }
 
 function closeModal(){
@@ -746,7 +913,11 @@ modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) c
 modalSaveBtn.addEventListener('click', async () => {
   const payload = {};
   let invalidDateLabel = null;
-  modalGrid.querySelectorAll('[data-key]').forEach(el => {
+  const allInputs = [
+    ...modalGrid.querySelectorAll('[data-key]'),
+    ...modalGridSalary.querySelectorAll('[data-key]')
+  ];
+  allInputs.forEach(el => {
     let v = el.value.trim();
     if (el.dataset.type === 'date' && v !== ''){
       if (!/^\d{4}-\d{2}-\d{2}$/.test(v)){
@@ -760,7 +931,9 @@ modalSaveBtn.addEventListener('click', async () => {
     return;
   }
   if (payload.employee_no !== null) payload.employee_no = Number(payload.employee_no);
-  if (payload.salary !== null && payload.salary !== undefined) payload.salary = Number(payload.salary);
+  SALARY_FIELDS.forEach(f => {
+    if (payload[f.key] !== null && payload[f.key] !== undefined) payload[f.key] = Number(payload[f.key]);
+  });
   if (!payload.facility){ modalError.textContent = '施設を選択してください'; return; }
 
   modalSaveBtn.disabled = true; modalSaveBtn.textContent = '保存中...';
