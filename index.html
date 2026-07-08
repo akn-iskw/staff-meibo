@@ -81,7 +81,7 @@
   }
   #loginBtn:hover{ background:var(--navy-dark); }
   #loginError{
-    color:var(--err);
+    color:var(--warn);
     font-size:12px;
     margin-top:10px;
     min-height:16px;
@@ -197,7 +197,6 @@
     border-bottom:1px solid var(--border);
     white-space:nowrap;
   }
-  table.roster{ display:block; overflow-x:auto; }
   table.result th, table.roster th{
     color:var(--muted);
     font-weight:600;
@@ -231,12 +230,25 @@
     max-width:680px;
     max-height:90vh;
     overflow-y:auto;
+    overscroll-behavior:contain;
   }
   .modal h2{ font-size:16px; color:var(--navy); margin:0 0 16px; }
   .modal-grid{
     display:grid;
     grid-template-columns:1fr 1fr;
     gap:12px 16px;
+  }
+  @media (max-width:480px){
+    .modal-grid{ grid-template-columns:1fr; }
+    .modal{ padding:20px 16px; max-width:100%; }
+  }
+  .qual-pair-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px 16px;
+  }
+  @media (max-width:480px){
+    .qual-pair-grid{ grid-template-columns:1fr; }
   }
   .modal-grid .field.full{ grid-column:1 / -1; }
   .modal-grid label{ display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
@@ -257,14 +269,14 @@
     padding:9px 16px;
     font-size:13px;
     font-weight:600;
-    color:var(--err);
+    color:var(--muted);
     background:#fff;
-    border:1px solid var(--err);
+    border:1px solid var(--border);
     border-radius:8px;
     cursor:pointer;
   }
-  button.danger:hover{ background:#FBEAEA; }
-  #modalError{ color:var(--err); font-size:12px; margin-top:10px; }
+  button.danger:hover{ background:#F2F3F5; color:var(--ink); }
+  #modalError{ color:var(--warn); font-size:12px; margin-top:10px; }
   .edit-btn{
     padding:4px 10px;
     font-size:12px;
@@ -277,7 +289,7 @@
   .edit-btn:hover{ background:var(--blue-light); }
   .name-link{
     color:var(--navy);
-    font-weight:600;
+    font-weight:700;
     cursor:pointer;
     text-decoration:underline;
     text-decoration-color:transparent;
@@ -309,6 +321,37 @@
     border-radius:6px;
   }
   .salary-hint{ font-size:12px; color:var(--muted); margin:-6px 0 12px; grid-column:1 / -1; }
+  .salary-current{
+    grid-column:1 / -1;
+    font-size:14px;
+    color:var(--ink);
+    background:#FAFBFF;
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:10px 14px;
+    margin-bottom:4px;
+  }
+  #addSalaryHistoryBtn{ grid-column:1 / -1; width:100%; }
+  .salary-history-title{
+    grid-column:1 / -1;
+    font-size:13px;
+    color:var(--navy);
+    margin:8px 0 4px;
+  }
+  table.salary-history-table{
+    grid-column:1 / -1;
+    width:100%;
+    border-collapse:collapse;
+    font-size:12px;
+  }
+  table.salary-history-table th, table.salary-history-table td{
+    text-align:left;
+    padding:6px 8px;
+    border-bottom:1px solid var(--border);
+    vertical-align:top;
+  }
+  table.salary-history-table th{ color:var(--muted); font-weight:600; }
+  .hist-breakdown{ color:var(--muted); }
 
   .file-row-inline{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .cert-link{
@@ -321,13 +364,13 @@
   .cert-delete-btn{
     font-size:12px;
     padding:5px 10px;
-    color:var(--err);
+    color:var(--muted);
     background:#fff;
-    border:1px solid var(--err);
+    border:1px solid var(--border);
     border-radius:14px;
     cursor:pointer;
   }
-  .cert-delete-btn:hover{ background:#FBEAEA; }
+  .cert-delete-btn:hover{ background:#F2F3F5; color:var(--ink); }
   .cert-file-input{ font-size:12px; max-width:220px; }
   .cert-disabled-hint{ font-size:12px; color:var(--muted); }
 </style>
@@ -412,6 +455,13 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const FACILITIES = ['ナーシングホーム寿々デンタル中村', '子都菜', 'おきむら家'];
 let currentFacility = FACILITIES[0];
+let qualificationOptions = [];
+let currentUserEmail = '';
+
+async function loadQualificationOptions(){
+  const { data, error } = await sb.from('qualification_options').select('name').order('name');
+  if (!error && data) qualificationOptions = data.map(d => d.name);
+}
 
 /* ---------- 認証まわり ---------- */
 const loginView = document.getElementById('loginView');
@@ -435,8 +485,10 @@ function showApp(email){
   loginView.classList.add('hidden');
   appView.classList.remove('hidden');
   userEmailEl.textContent = email;
+  currentUserEmail = email;
   initFacilityUI();
   loadRoster(currentFacility);
+  loadQualificationOptions();
 }
 
 loginBtn.addEventListener('click', async () => {
@@ -637,7 +689,7 @@ uploadBtn.addEventListener('click', async () => {
 function renderUploadLog(inserted, skipped, warnings, insertError, facility){
   let html = '';
   if (insertError){
-    html += `<div class="log-title" style="color:var(--err);">✗ 登録に失敗しました：${insertError.message}</div>`;
+    html += `<div class="log-title" style="color:var(--warn);">✗ 登録に失敗しました：${insertError.message}</div>`;
   } else {
     html += `<div class="log-title ok">✓ ${inserted.length}名を「${facility}」に登録しました</div>`;
     if (inserted.length){
@@ -667,7 +719,7 @@ async function loadRoster(facility){
   area.innerHTML = '<div class="empty-msg">読み込み中...</div>';
   const { data, error } = await sb.from('employees').select('*').eq('facility', facility).order('employee_no', { ascending:true, nullsFirst:false });
   if (error){
-    area.innerHTML = `<div class="empty-msg" style="color:var(--err);">読み込みに失敗しました：${error.message}</div>`;
+    area.innerHTML = `<div class="empty-msg" style="color:var(--warn);">読み込みに失敗しました：${error.message}</div>`;
     return;
   }
   currentEmployees = data || [];
@@ -739,12 +791,6 @@ const MODAL_FIELDS = [
   { key:'employment_type', label:'雇用形態', type:'select', options:['正社員','契約社員','パート','その他'] },
   { key:'hire_date', label:'入社日', type:'textdate' },
   { key:'resignation_date', label:'退職日', type:'textdate' },
-  { key:'qualification_1', label:'保有資格1', type:'text' },
-  { key:'qualification_1_date', label:'資格取得日1', type:'textdate' },
-  { key:'qualification_2', label:'保有資格2', type:'text' },
-  { key:'qualification_2_date', label:'資格取得日2', type:'textdate' },
-  { key:'qualification_3', label:'保有資格3', type:'text' },
-  { key:'qualification_3_date', label:'資格取得日3', type:'textdate' },
   { key:'remarks', label:'備考', type:'textarea' },
 ];
 
@@ -769,6 +815,7 @@ const modalCancelBtn = document.getElementById('modalCancelBtn');
 const modalSaveBtn = document.getElementById('modalSaveBtn');
 const modalError = document.getElementById('modalError');
 let currentEditId = null;
+let currentSalaryHistory = [];
 
 modalTabs.querySelectorAll('.modal-tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -780,19 +827,64 @@ modalTabs.querySelectorAll('.modal-tab-btn').forEach(btn => {
   });
 });
 
-function renderSalaryGrid(employee){
-  const rows = SALARY_FIELDS.map(f => {
-    const val = employee ? (employee[f.key] ?? '') : '';
-    return `<div class="field"><label>${f.label}</label><input type="number" data-key="${f.key}" class="salary-input" value="${escapeAttr(val)}"></div>`;
+async function loadSalaryHistory(employeeId){
+  const { data, error } = await sb.from('salary_history')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .order('effective_date', { ascending:false })
+    .order('created_at', { ascending:false });
+  return error ? [] : (data || []);
+}
+
+function renderSalaryTab(employee, history){
+  if (!employee){
+    return `<div class="salary-hint">社員情報を保存すると、給与を登録できるようになります</div>`;
+  }
+  const latest = history[0];
+  const currentLine = latest
+    ? `現在の給与：<strong>¥${Number(latest.total).toLocaleString()}</strong>（${isoToSlash(latest.effective_date)}〜適用）`
+    : 'まだ給与が登録されていません';
+
+  const inputRows = SALARY_FIELDS.map(f =>
+    `<div class="field"><label>${f.label}</label><input type="number" class="salary-input" data-shkey="${f.key}"></div>`
+  ).join('');
+
+  const historyRows = history.map(h => {
+    const breakdown = SALARY_FIELDS
+      .filter(f => h[f.key])
+      .map(f => `${f.label} ¥${Number(h[f.key]).toLocaleString()}`)
+      .join('／');
+    return `<tr>
+      <td>${isoToSlash(h.effective_date)}</td>
+      <td>¥${Number(h.total).toLocaleString()}</td>
+      <td class="hist-breakdown">${breakdown || '-'}</td>
+      <td>${h.note ?? ''}</td>
+      <td>${h.created_by ?? ''}</td>
+    </tr>`;
   }).join('');
-  const total = SALARY_FIELDS.reduce((sum, f) => sum + (employee && employee[f.key] ? Number(employee[f.key]) : 0), 0);
+
   return `
-    <div class="salary-hint">ベース給と各種手当を入力すると、合計（給与）が自動計算されます。</div>
-    ${rows}
+    <div class="salary-current">${currentLine}</div>
+    <div class="salary-hint">新しい適用日から金額を登録できます。過去の履歴は記録として残り、後から変更・削除はできません。</div>
+    <div class="field"><label>適用開始日</label><input type="text" id="shEffectiveDate" placeholder="yyyy/m/d"></div>
+    ${inputRows}
     <div class="field full">
-      <label>合計（給与）</label>
-      <div class="salary-total" id="salaryTotalDisplay">¥${total.toLocaleString()}</div>
-    </div>`;
+      <label>メモ（任意）</label>
+      <input type="text" id="shNote" placeholder="例：昇給、役職手当追加など">
+    </div>
+    <div class="field full">
+      <label>合計（自動計算）</label>
+      <div class="salary-total" id="salaryTotalDisplay">¥0</div>
+    </div>
+    <button type="button" class="secondary" id="addSalaryHistoryBtn">この内容を給与履歴に登録</button>
+    <div id="salaryHistoryError" class="salary-hint"></div>
+    <h3 class="salary-history-title">給与履歴</h3>
+    ${history.length ? `
+    <table class="salary-history-table">
+      <thead><tr><th>適用日</th><th>合計</th><th>内訳</th><th>メモ</th><th>登録者</th></tr></thead>
+      <tbody>${historyRows}</tbody>
+    </table>` : `<div class="salary-hint">まだ履歴はありません</div>`}
+  `;
 }
 
 function recalcSalaryTotal(){
@@ -806,8 +898,57 @@ function recalcSalaryTotal(){
 }
 modalGridSalary.addEventListener('input', recalcSalaryTotal);
 
+modalGridSalary.addEventListener('click', async (e) => {
+  if (!e.target.matches('#addSalaryHistoryBtn')) return;
+  if (!currentEditId) return;
+  const errEl = document.getElementById('salaryHistoryError');
+  errEl.textContent = '';
+  const dateInput = document.getElementById('shEffectiveDate');
+  const iso = slashToIso(dateInput.value);
+  if (!iso){
+    errEl.textContent = '適用開始日を yyyy/m/d の形式で入力してください（例：2026/7/1）';
+    return;
+  }
+  const payload = { employee_id: currentEditId, effective_date: iso, created_by: currentUserEmail };
+  modalGridSalary.querySelectorAll('.salary-input').forEach(el => {
+    const key = el.dataset.shkey;
+    const v = el.value.trim();
+    payload[key] = v === '' ? null : Number(v);
+  });
+  payload.note = document.getElementById('shNote').value.trim() || null;
+
+  const btn = document.getElementById('addSalaryHistoryBtn');
+  btn.disabled = true; btn.textContent = '登録中...';
+  const { error } = await sb.from('salary_history').insert([payload]);
+  btn.disabled = false; btn.textContent = 'この内容を給与履歴に登録';
+
+  if (error){
+    errEl.textContent = '登録に失敗しました：' + error.message;
+    return;
+  }
+  const emp = currentEmployees.find(e => e.id === currentEditId);
+  currentSalaryHistory = await loadSalaryHistory(currentEditId);
+  modalGridSalary.innerHTML = renderSalaryTab(emp, currentSalaryHistory);
+});
+
 function escapeAttr(v){
   return String(v ?? '').replace(/"/g, '&quot;');
+}
+
+function isoToSlash(iso){
+  if (!iso) return '';
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  return `${m[1]}/${Number(m[2])}/${Number(m[3])}`;
+}
+
+function slashToIso(slash){
+  const s = String(slash).trim();
+  const m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (!m) return null;
+  const mm = String(m[2]).padStart(2, '0');
+  const dd = String(m[3]).padStart(2, '0');
+  return `${m[1]}-${mm}-${dd}`;
 }
 
 function renderModalField(f, employee){
@@ -820,7 +961,7 @@ function renderModalField(f, employee){
     return `<div class="field full"><label>${f.label}</label><textarea data-key="${f.key}">${val ?? ''}</textarea></div>`;
   }
   if (f.type === 'textdate'){
-    return `<div class="field"><label>${f.label}</label><input type="text" data-key="${f.key}" data-type="date" placeholder="yyyy-mm-dd" value="${escapeAttr(val)}"></div>`;
+    return `<div class="field"><label>${f.label}</label><input type="text" data-key="${f.key}" data-type="date" placeholder="yyyy/m/d" value="${escapeAttr(isoToSlash(val))}"></div>`;
   }
   return `<div class="field"><label>${f.label}</label><input type="${f.type}" data-key="${f.key}" value="${escapeAttr(val)}"></div>`;
 }
@@ -837,15 +978,44 @@ function renderCertRow(index, employee){
   </div>`;
 }
 
-function openModal(employee){
+function renderQualificationPair(index, employee){
+  const qKey = `qualification_${index}`;
+  const dKey = `qualification_${index}_date`;
+  const currentVal = employee ? (employee[qKey] ?? '') : '';
+  const dateVal = employee ? (employee[dKey] ?? '') : '';
+  const optionSet = new Set(qualificationOptions);
+  if (currentVal) optionSet.add(currentVal);
+  const opts = [...optionSet].sort().map(o =>
+    `<option value="${escapeAttr(o)}" ${o===currentVal?'selected':''}>${o}</option>`
+  ).join('');
+  return `<div class="field full">
+    <div class="qual-pair-grid">
+      <div class="field">
+        <label>保有資格${index}</label>
+        <select data-key="${qKey}" class="qual-select">
+          <option value="">-</option>
+          ${opts}
+          <option value="__add_new__">＋ 新しい資格を追加...</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>資格取得日${index}</label>
+        <input type="text" data-key="${dKey}" data-type="date" placeholder="yyyy/m/d" value="${escapeAttr(isoToSlash(dateVal))}">
+      </div>
+    </div>
+  </div>`;
+}
+
+async function openModal(employee){
   currentEditId = employee ? employee.id : null;
   modalTitle.textContent = employee ? '社員情報を編集' : '社員を新規追加';
   const remarksIdx = MODAL_FIELDS.findIndex(f => f.key === 'remarks');
   const before = MODAL_FIELDS.slice(0, remarksIdx).map(f => renderModalField(f, employee)).join('');
   const after = MODAL_FIELDS.slice(remarksIdx).map(f => renderModalField(f, employee)).join('');
-  const certRows = [1, 2, 3].map(i => renderCertRow(i, employee)).join('');
-  modalGrid.innerHTML = before + certRows + after;
-  modalGridSalary.innerHTML = renderSalaryGrid(employee);
+  const qualPairs = [1, 2, 3, 4].map(i => renderQualificationPair(i, employee)).join('');
+  const certRows = [1, 2, 3, 4].map(i => renderCertRow(i, employee)).join('');
+  modalGrid.innerHTML = before + qualPairs + certRows + after;
+  modalGridSalary.innerHTML = '<div class="salary-hint">読み込み中...</div>';
   modalTabs.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
   modalTabs.querySelector('[data-tab="basic"]').classList.add('active');
   modalGrid.classList.remove('hidden');
@@ -853,9 +1023,44 @@ function openModal(employee){
   modalDeleteBtn.classList.toggle('hidden', !employee);
   modalError.textContent = '';
   modalOverlay.classList.remove('hidden');
+  const modalEl = modalOverlay.querySelector('.modal');
+  modalEl.scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+
+  currentSalaryHistory = employee ? await loadSalaryHistory(employee.id) : [];
+  if (currentEditId === (employee ? employee.id : null)){
+    modalGridSalary.innerHTML = renderSalaryTab(employee, currentSalaryHistory);
+  }
 }
 
 modalGrid.addEventListener('change', async (e) => {
+  if (e.target.matches('.qual-select')){
+    if (e.target.value !== '__add_new__') return;
+    const select = e.target;
+    const newName = prompt('新しい資格名を入力してください');
+    if (!newName || !newName.trim()){
+      select.value = '';
+      return;
+    }
+    const trimmed = newName.trim();
+    if (!qualificationOptions.includes(trimmed)){
+      qualificationOptions.push(trimmed);
+      qualificationOptions.sort();
+      const { error } = await sb.from('qualification_options').insert([{ name: trimmed }]);
+      if (error && error.code !== '23505'){
+        alert('資格の追加に失敗しました：' + error.message);
+      }
+    }
+    const addNewOption = select.querySelector('option[value="__add_new__"]');
+    if (![...select.options].some(o => o.value === trimmed)){
+      const opt = document.createElement('option');
+      opt.value = trimmed;
+      opt.textContent = trimmed;
+      select.insertBefore(opt, addNewOption);
+    }
+    select.value = trimmed;
+    return;
+  }
   if (!e.target.matches('.cert-file-input')) return;
   const index = e.target.dataset.index;
   const file = e.target.files[0];
@@ -906,6 +1111,7 @@ async function deleteCertificate(index){
 function closeModal(){
   modalOverlay.classList.add('hidden');
   currentEditId = null;
+  document.body.style.overflow = '';
 }
 
 document.getElementById('addBtn').addEventListener('click', () => openModal(null));
@@ -922,20 +1128,20 @@ modalSaveBtn.addEventListener('click', async () => {
   allInputs.forEach(el => {
     let v = el.value.trim();
     if (el.dataset.type === 'date' && v !== ''){
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)){
+      const iso = slashToIso(v);
+      if (!iso){
         invalidDateLabel = el.previousElementSibling ? el.previousElementSibling.textContent : el.dataset.key;
+      } else {
+        v = iso;
       }
     }
     payload[el.dataset.key] = (v === '') ? null : v;
   });
   if (invalidDateLabel){
-    modalError.textContent = `「${invalidDateLabel}」は yyyy-mm-dd の形式で入力してください（例：1990-04-01）`;
+    modalError.textContent = `「${invalidDateLabel}」は yyyy/m/d の形式で入力してください（例：1990/4/1）`;
     return;
   }
   if (payload.employee_no !== null) payload.employee_no = Number(payload.employee_no);
-  SALARY_FIELDS.forEach(f => {
-    if (payload[f.key] !== null && payload[f.key] !== undefined) payload[f.key] = Number(payload[f.key]);
-  });
   if (!payload.facility){ modalError.textContent = '施設を選択してください'; return; }
 
   modalSaveBtn.disabled = true; modalSaveBtn.textContent = '保存中...';
@@ -985,7 +1191,6 @@ const EXPORT_COLUMNS = [
   ['部署・職種', 'department_job', 14, 's'],
   ['役職名', 'position_title', 12, 's'],
   ['雇用形態', 'employment_type', 10, 's'],
-  ['給与', 'salary', 10, 'n'],
   ['入社日', 'hire_date', 12, 'd'],
   ['勤続年数', null, 8, 'formula_tenure'],
   ['退職日', 'resignation_date', 12, 'd'],
@@ -995,6 +1200,8 @@ const EXPORT_COLUMNS = [
   ['資格取得日2', 'qualification_2_date', 12, 'd'],
   ['保有資格3', 'qualification_3', 16, 's'],
   ['資格取得日3', 'qualification_3_date', 12, 'd'],
+  ['保有資格4', 'qualification_4', 16, 's'],
+  ['資格取得日4', 'qualification_4_date', 12, 'd'],
   ['備考', 'remarks', 24, 's'],
 ];
 
@@ -1082,7 +1289,14 @@ function buildFacilitySheet(wb, facility, employees){
 
 function colLetterOf(headerName){
   const idx = EXPORT_COLUMNS.findIndex(c => c[0] === headerName);
-  return String.fromCharCode(65 + idx); // A-Z範囲内の想定
+  let n = idx + 1; // 1-based
+  let letters = '';
+  while (n > 0){
+    const rem = (n - 1) % 26;
+    letters = String.fromCharCode(65 + rem) + letters;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letters;
 }
 </script>
 </body>
