@@ -6,24 +6,33 @@
 <title>ウィズ 社員名簿</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
   :root{
-    --navy:#1F3864;
-    --navy-dark:#152647;
-    --blue-light:#D9E2F3;
-    --ink:#2B2B2B;
-    --muted:#6B7280;
-    --ok:#1E7B45;
-    --warn:#B4530A;
-    --err:#B3261E;
-    --bg:#F5F6F8;
+    /* メインカラー：落ち着いた青緑（信頼感・清潔感） */
+    --navy:#2C5F56;
+    --navy-dark:#1E453D;
+    /* 淡いミントティント（縞模様・ハイライト用） */
+    --blue-light:#E3EEEA;
+    /* アクセント（見出しの下線・タグなど、控えめに使用） */
+    --gold:#B8823D;
+    /* 本文・補足テキストは温かみのある濃グレーに */
+    --ink:#2A2823;
+    --muted:#6B6459;
+    --ok:#2F7A4F;
+    --warn:#B3651A;
+    --err:#A9542E;
+    /* 背景は紙のような温かみのあるオフホワイトに */
+    --bg:#F7F3EC;
     --card:#FFFFFF;
-    --border:#E1E4EA;
+    --border:#E4DFD5;
   }
   *{box-sizing:border-box;}
   body{
     margin:0;
-    font-family:"游ゴシック","Yu Gothic","Hiragino Kaku Gothic ProN",sans-serif;
+    font-family:"Zen Kaku Gothic New","游ゴシック","Yu Gothic","Hiragino Kaku Gothic ProN",sans-serif;
     background:var(--bg);
     color:var(--ink);
   }
@@ -48,9 +57,11 @@
   }
   .login-card h1{
     font-size:18px;
+    font-weight:700;
     color:var(--navy);
     margin:0 0 24px;
     text-align:center;
+    letter-spacing:.02em;
   }
   .field{ margin-bottom:14px; }
   .field label{
@@ -98,11 +109,20 @@
     justify-content:space-between;
     flex-wrap:wrap;
     gap:8px;
+    position:relative;
+  }
+  header.appbar::before{
+    content:'';
+    position:absolute;
+    top:0; left:0; right:0;
+    height:3px;
+    background:linear-gradient(90deg, var(--gold), var(--navy) 65%);
   }
   header.appbar h1{
-    font-size:16px;
+    font-size:17px;
     margin:0;
     font-weight:700;
+    letter-spacing:.03em;
   }
   .user-info{ font-size:12px; opacity:.85; display:flex; align-items:center; gap:12px; }
   #logoutBtn{
@@ -121,17 +141,38 @@
   .card{
     background:var(--card);
     border:1px solid var(--border);
-    border-radius:10px;
+    border-radius:12px;
     padding:20px 22px;
     margin-bottom:20px;
+    box-shadow:0 1px 3px rgba(42,40,35,0.05), 0 1px 2px rgba(42,40,35,0.04);
   }
   .card h2{
     font-size:15px;
+    font-weight:700;
     color:var(--navy);
     margin:0 0 14px;
+    letter-spacing:.02em;
   }
 
   .tabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
+  .facility-select-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:16px;
+  }
+  .facility-select-row label{ font-size:13px; color:var(--muted); }
+  .facility-select-row select{
+    font-family:inherit;
+    font-size:14px;
+    font-weight:600;
+    padding:8px 12px;
+    border:1px solid var(--border);
+    border-radius:6px;
+    background:#fff;
+    color:var(--navy);
+    max-width:280px;
+  }
   .tab-btn{
     padding:8px 14px;
     font-size:13px;
@@ -164,13 +205,14 @@
     padding:10px 18px;
     font-size:14px;
     font-weight:700;
+    letter-spacing:.02em;
     color:#fff;
     background:var(--navy);
     border:none;
-    border-radius:8px;
+    border-radius:9px;
     cursor:pointer;
   }
-  button.primary:disabled{ background:#B9C3D6; cursor:not-allowed; }
+  button.primary:disabled{ background:#CBC3B2; cursor:not-allowed; }
   button.primary:not(:disabled):hover{ background:var(--navy-dark); }
 
   button.secondary{
@@ -180,7 +222,7 @@
     color:var(--navy);
     background:#fff;
     border:1px solid var(--navy);
-    border-radius:8px;
+    border-radius:9px;
     cursor:pointer;
   }
   button.secondary:hover{ background:var(--blue-light); }
@@ -199,11 +241,22 @@
   }
   table.result th, table.roster th{
     color:var(--muted);
-    font-weight:600;
+    font-weight:700;
     font-size:12px;
-    background:#FAFBFC;
+    background:#F2EDE2;
   }
-  table.roster tbody tr:nth-child(odd){ background:#FAFBFF; }
+  table.roster tbody tr:nth-child(odd){ background:#FBF9F4; }
+
+  @media (max-width:480px){
+    main{ padding-left:10px; padding-right:10px; }
+    .card{ padding:16px 14px; }
+    table.roster th, table.roster td{
+      padding:6px 4px;
+      font-size:11.5px;
+      white-space:normal;
+      word-break:break-word;
+    }
+  }
 
   .log-title{ font-weight:700; font-size:14px; margin-top:16px; }
   .log-title.ok{ color:var(--ok); }
@@ -212,6 +265,32 @@
 
   .toolbar{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:8px; }
   .count-badge{ font-size:12px; color:var(--muted); }
+  .toolbar-inline{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:10px;
+  }
+  .show-retired-toggle{
+    font-size:12px;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:6px;
+    cursor:pointer;
+  }
+  tr.retired-row{ opacity:.6; }
+  .retired-badge{
+    display:inline-block;
+    margin-left:8px;
+    font-size:11px;
+    color:var(--muted);
+    background:#EDE8DC;
+    border-radius:10px;
+    padding:2px 8px;
+  }
   .empty-msg{ font-size:13px; color:var(--muted); padding:20px 0; text-align:center; }
 
   /* 編集モーダル */
@@ -275,7 +354,7 @@
     border-radius:8px;
     cursor:pointer;
   }
-  button.danger:hover{ background:#F2F3F5; color:var(--ink); }
+  button.danger:hover{ background:#F1ECE2; color:var(--ink); }
   #modalError{ color:var(--warn); font-size:12px; margin-top:10px; }
   .edit-btn{
     padding:4px 10px;
@@ -325,7 +404,7 @@
     grid-column:1 / -1;
     font-size:14px;
     color:var(--ink);
-    background:#FAFBFF;
+    background:#FBF9F4;
     border:1px solid var(--border);
     border-radius:8px;
     padding:10px 14px;
@@ -370,7 +449,7 @@
     border-radius:14px;
     cursor:pointer;
   }
-  .cert-delete-btn:hover{ background:#F2F3F5; color:var(--ink); }
+  .cert-delete-btn:hover{ background:#F1ECE2; color:var(--ink); }
   .cert-file-input{ font-size:12px; max-width:220px; }
   .cert-disabled-hint{ font-size:12px; color:var(--muted); }
 </style>
@@ -423,7 +502,10 @@
           <button class="secondary" id="exportBtn">Excelでダウンロード</button>
         </div>
       </div>
-      <div class="tabs" id="facilityTabs"></div>
+      <div class="facility-select-row">
+        <label for="facilitySelectView">所属：</label>
+        <select id="facilitySelectView"></select>
+      </div>
       <div id="rosterArea"></div>
     </div>
   </main>
@@ -512,17 +594,13 @@ checkSession();
 
 /* ---------- 施設タブ・アップロード先セレクト ---------- */
 function initFacilityUI(){
-  const tabsEl = document.getElementById('facilityTabs');
-  tabsEl.innerHTML = FACILITIES.map(f =>
-    `<button class="tab-btn ${f===currentFacility?'active':''}" data-facility="${f}">${f}</button>`
+  const viewSelect = document.getElementById('facilitySelectView');
+  viewSelect.innerHTML = FACILITIES.map(f =>
+    `<option value="${f}" ${f===currentFacility?'selected':''}>${f}</option>`
   ).join('');
-  tabsEl.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      currentFacility = btn.dataset.facility;
-      tabsEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      loadRoster(currentFacility);
-    });
+  viewSelect.addEventListener('change', () => {
+    currentFacility = viewSelect.value;
+    loadRoster(currentFacility);
   });
 
   const uploadSelect = document.getElementById('facilitySelectUpload');
@@ -713,6 +791,13 @@ function renderUploadLog(inserted, skipped, warnings, insertError, facility){
 
 /* ---------- 一覧表示 ---------- */
 let currentEmployees = [];
+let currentEmployeesAll = [];
+let showRetired = false;
+
+function isRetired(e){
+  if (!e.resignation_date) return false;
+  return new Date(e.resignation_date) <= new Date();
+}
 
 async function loadRoster(facility){
   const area = document.getElementById('rosterArea');
@@ -722,24 +807,52 @@ async function loadRoster(facility){
     area.innerHTML = `<div class="empty-msg" style="color:var(--warn);">読み込みに失敗しました：${error.message}</div>`;
     return;
   }
-  currentEmployees = data || [];
-  if (!currentEmployees.length){
-    area.innerHTML = `<div class="empty-msg">「${facility}」にはまだ社員データがありません</div>`;
+  currentEmployeesAll = data || [];
+  renderRosterTable();
+}
+
+function renderRosterTable(){
+  const area = document.getElementById('rosterArea');
+  const retiredCount = currentEmployeesAll.filter(isRetired).length;
+  const list = showRetired ? currentEmployeesAll : currentEmployeesAll.filter(e => !isRetired(e));
+  currentEmployees = list;
+
+  const toggleHtml = `<label class="show-retired-toggle">
+    <input type="checkbox" id="showRetiredToggle" ${showRetired ? 'checked' : ''}>
+    退職者も表示する${retiredCount ? `（${retiredCount}名）` : ''}
+  </label>`;
+
+  if (!currentEmployeesAll.length){
+    area.innerHTML = `<div class="empty-msg">まだ社員データがありません</div>`;
     return;
   }
-  const rows = currentEmployees.map(e => {
+  if (!list.length){
+    area.innerHTML = `${toggleHtml}<div class="empty-msg">在籍中の社員はいません</div>`;
+    document.getElementById('showRetiredToggle').addEventListener('change', (e) => {
+      showRetired = e.target.checked;
+      renderRosterTable();
+    });
+    return;
+  }
+
+  const rows = list.map(e => {
+    const retired = isRetired(e);
     const tenureEnd = e.resignation_date ? new Date(e.resignation_date) : new Date();
     const tenure = e.hire_date ? calcTenure(new Date(e.hire_date), tenureEnd) : '';
-    return `<tr>
+    return `<tr class="${retired ? 'retired-row' : ''}">
       <td>${e.employee_no ?? ''}</td>
-      <td><span class="name-link" data-id="${e.id}">${e.name ?? ''}</span></td>
+      <td><span class="name-link" data-id="${e.id}">${e.name ?? ''}</span>${retired ? '<span class="retired-badge">退職済み</span>' : ''}</td>
       <td>${e.department_job ?? ''}</td>
       <td>${fmtDate(e.hire_date)}</td>
       <td>${tenure}</td>
     </tr>`;
   }).join('');
+
   area.innerHTML = `
-    <div class="count-badge">${currentEmployees.length}名</div>
+    <div class="toolbar-inline">
+      <div class="count-badge">${list.length}名</div>
+      ${toggleHtml}
+    </div>
     <table class="roster">
       <thead><tr>
         <th>社員番号</th><th>氏名</th><th>職種</th><th>入社日</th><th>勤続年数</th>
@@ -751,6 +864,10 @@ async function loadRoster(facility){
       const emp = currentEmployees.find(e => String(e.id) === el.dataset.id);
       if (emp) openModal(emp);
     });
+  });
+  document.getElementById('showRetiredToggle').addEventListener('change', (e) => {
+    showRetired = e.target.checked;
+    renderRosterTable();
   });
 }
 
@@ -774,7 +891,7 @@ document.getElementById('refreshBtn').addEventListener('click', () => loadRoster
 
 /* ---------- 編集・新規追加モーダル ---------- */
 const MODAL_FIELDS = [
-  { key:'facility', label:'施設', type:'select', options: FACILITIES },
+  { key:'facility', label:'所属', type:'select', options: FACILITIES },
   { key:'employee_no', label:'社員番号', type:'number' },
   { key:'name', label:'氏名（漢字）', type:'text' },
   { key:'kana', label:'氏名（フリガナ）', type:'text' },
@@ -1203,7 +1320,7 @@ modalSaveBtn.addEventListener('click', async () => {
     return;
   }
   if (payload.employee_no !== null) payload.employee_no = Number(payload.employee_no);
-  if (!payload.facility){ modalError.textContent = '施設を選択してください'; return; }
+  if (!payload.facility){ modalError.textContent = '所属を選択してください'; return; }
 
   modalSaveBtn.disabled = true; modalSaveBtn.textContent = '保存中...';
   let error;
