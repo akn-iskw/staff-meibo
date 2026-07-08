@@ -873,7 +873,9 @@ modalGrid.addEventListener('click', async (e) => {
 async function uploadCertificate(index, file){
   if (!currentEditId) return;
   const colKey = `qualification_${index}_file`;
-  const path = `${currentEditId}/qualification_${index}_${Date.now()}_${file.name}`;
+  const extMatch = file.name.match(/\.([A-Za-z0-9]+)$/);
+  const ext = extMatch ? extMatch[1].toLowerCase() : 'dat';
+  const path = `${currentEditId}/qualification_${index}_${Date.now()}.${ext}`;
   const { error: upErr } = await sb.storage.from('certificates').upload(path, file, { upsert:true });
   if (upErr){ alert('アップロードに失敗しました：' + upErr.message); return; }
   const { error: updErr } = await sb.from('employees').update({ [colKey]: path }).eq('id', currentEditId);
