@@ -539,10 +539,22 @@ const FACILITIES = ['ナーシングホーム寿々デンタル中村', '子都�
 let currentFacility = FACILITIES[0];
 let qualificationOptions = [];
 let currentUserEmail = '';
+let canViewSalary = false;
+let allowedFacilities = [];
 
 async function loadQualificationOptions(){
   const { data, error } = await sb.from('qualification_options').select('name').order('name');
   if (!error && data) qualificationOptions = data.map(d => d.name);
+}
+
+async function loadPermissions(email){
+  const { data, error } = await sb.from('staff_permissions').select('can_view_salary, allowed_facilities').eq('email', email).maybeSingle();
+  canViewSalary = !error && data ? !!data.can_view_salary : false;
+  allowedFacilities = (!error && data && Array.isArray(data.allowed_facilities))
+    ? FACILITIES.filter(f => data.allowed_facilities.includes(f))
+    : [];
+  const salaryTabBtn = document.querySelector('.modal-tab-btn[data-tab="salary"]');
+  if (salaryTabBtn) salaryTabBtn.classList.toggle('hidden', !canViewSalary);
 }
 
 /* ---------- 認証まわり ---------- */
@@ -563,13 +575,14 @@ function showLogin(){
   appView.classList.add('hidden');
 }
 
-function showApp(email){
+async function showApp(email){
   loginView.classList.add('hidden');
   appView.classList.remove('hidden');
   userEmailEl.textContent = email;
   currentUserEmail = email;
+  await loadPermissions(email);
   initFacilityUI();
-  loadRoster(currentFacility);
+  if (currentFacility) loadRoster(currentFacility);
   loadQualificationOptions();
 }
 
@@ -595,7 +608,20 @@ checkSession();
 /* ---------- 施設タブ・アップロード先セレクト ---------- */
 function initFacilityUI(){
   const viewSelect = document.getElementById('facilitySelectView');
-  viewSelect.innerHTML = FACILITIES.map(f =>
+  const uploadSelect = document.getElementById('facilitySelectUpload');
+
+  if (!allowedFacilities.length){
+    viewSelect.innerHTML = '';
+    uploadSelect.innerHTML = '';
+    currentFacility = null;
+    document.getElementById('rosterArea').innerHTML =
+      '<div class="empty-msg">アクセスできる施設がありません。管理者にお問い合わせください。</div>';
+    return;
+  }
+
+  if (!allowedFacilities.includes(currentFacility)) currentFacility = allowedFacilities[0];
+
+  viewSelect.innerHTML = allowedFacilities.map(f =>
     `<option value="${f}" ${f===currentFacility?'selected':''}>${f}</option>`
   ).join('');
   viewSelect.addEventListener('change', () => {
@@ -603,8 +629,7 @@ function initFacilityUI(){
     loadRoster(currentFacility);
   });
 
-  const uploadSelect = document.getElementById('facilitySelectUpload');
-  uploadSelect.innerHTML = FACILITIES.map(f => `<option value="${f}">${f}</option>`).join('');
+  uploadSelect.innerHTML = allowedFacilities.map(f => `<option value="${f}">${f}</option>`).join('');
 }
 
 /* ---------- 入社連絡票の解析（従来ロジック） ---------- */
@@ -1131,7 +1156,13 @@ function slashToIso(slash){
 function renderModalField(f, employee){
   const val = employee ? (employee[f.key] ?? '') : (f.key === 'facility' ? currentFacility : '');
   if (f.type === 'select'){
-    const opts = f.options.map(o => `<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('');
+    let options = f.options;
+    if (f.key === 'facility'){
+      const set = new Set(allowedFacilities);
+      if (val) set.add(val);
+      options = [...set];
+    }
+    const opts = options.map(o => `<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('');
     return `<div class="field"><label>${f.label}</label><select data-key="${f.key}"><option value="">-</option>${opts}</select></div>`;
   }
   if (f.type === 'textarea'){
@@ -1292,7 +1323,10 @@ function closeModal(){
   document.body.style.overflow = '';
 }
 
-document.getElementById('addBtn').addEventListener('click', () => openModal(null));
+document.getElementById('addBtn').addEventListener('click', () => {
+  if (!allowedFacilities.length){ alert('アクセスできる施設がありません。管理者にお問い合わせください。'); return; }
+  openModal(null);
+});
 modalCancelBtn.addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
 
@@ -1388,7 +1422,7 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   btn.disabled = true; btn.textContent = '作成中...';
   try{
     const wb = new ExcelJS.Workbook();
-    for (const facility of FACILITIES){
+    for (const facility of allowedFacilities){
       const { data } = await sb.from('employees').select('*').eq('facility', facility).order('employee_no', { ascending:true, nullsFirst:false });
       buildFacilitySheet(wb, facility, data || []);
     }
