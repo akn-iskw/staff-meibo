@@ -331,6 +331,9 @@
   }
   .modal-grid .field.full{ grid-column:1 / -1; }
   .modal-grid label{ display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .birthdate-row{ display:flex; align-items:center; gap:8px; }
+  .birthdate-row input{ flex:1; }
+  .age-display{ font-size:13px; color:var(--muted); white-space:nowrap; }
   .modal-grid input, .modal-grid select, .modal-grid textarea{
     width:100%;
     padding:8px 10px;
@@ -864,9 +867,12 @@ function renderRosterTable(){
     const retired = isRetired(e);
     const tenureEnd = e.resignation_date ? new Date(e.resignation_date) : new Date();
     const tenure = e.hire_date ? calcTenure(new Date(e.hire_date), tenureEnd) : '';
+    const age = e.birth_date ? calcYears(new Date(e.birth_date), new Date()) : '';
     return `<tr class="${retired ? 'retired-row' : ''}">
       <td>${e.employee_no ?? ''}</td>
       <td><span class="name-link" data-id="${e.id}">${e.name ?? ''}</span>${retired ? '<span class="retired-badge">退職済み</span>' : ''}</td>
+      <td>${fmtDate(e.birth_date)}</td>
+      <td>${age}</td>
       <td>${e.department_job ?? ''}</td>
       <td>${fmtDate(e.hire_date)}</td>
       <td>${tenure}</td>
@@ -880,7 +886,7 @@ function renderRosterTable(){
     </div>
     <table class="roster">
       <thead><tr>
-        <th>社員番号</th><th>氏名</th><th>職種</th><th>入社日</th><th>勤続年数</th>
+        <th>社員番号</th><th>氏名</th><th>生年月日</th><th>年齢</th><th>職種</th><th>入社日</th><th>勤続年数</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -980,6 +986,14 @@ async function loadSalaryHistory(employeeId){
 
 let editingSalaryHistoryId = null;
 
+function monthOptions(selected){
+  let opts = '<option value="">-</option>';
+  for (let m = 1; m <= 12; m++){
+    opts += `<option value="${m}" ${Number(selected)===m?'selected':''}>${m}月</option>`;
+  }
+  return opts;
+}
+
 function renderSalaryTab(employee, history){
   if (!employee){
     return `<div class="salary-hint">社員情報を保存すると、給与を登録できるようになります</div>`;
@@ -998,8 +1012,10 @@ function renderSalaryTab(employee, history){
       .filter(f => h[f.key])
       .map(f => `${f.label} ¥${Number(h[f.key]).toLocaleString()}`)
       .join('／');
+    const months = [h.raise_month ? `昇給月 ${h.raise_month}月` : '', h.payment_month ? `支給月 ${h.payment_month}月` : ''].filter(Boolean).join('／');
     return `<tr>
       <td>${isoToSlash(h.effective_date)}</td>
+      <td>${months || '-'}</td>
       <td>¥${Number(h.total).toLocaleString()}</td>
       <td class="hist-breakdown">${breakdown || '-'}</td>
       <td>${h.note ?? ''}</td>
@@ -1012,6 +1028,12 @@ function renderSalaryTab(employee, history){
     <div class="salary-current">${currentLine}</div>
     <div class="salary-hint" id="salaryFormHint">新しい適用日から金額を登録できます。入力を間違えた履歴は、一覧の「編集」から修正できます。</div>
     <div class="field"><label>適用開始日</label><input type="text" id="shEffectiveDate" placeholder="yyyy/m/d"></div>
+    <div class="field full">
+      <div class="qual-pair-grid">
+        <div class="field"><label>昇給月</label><select id="shRaiseMonth">${monthOptions()}</select></div>
+        <div class="field"><label>支給月</label><select id="shPaymentMonth">${monthOptions()}</select></div>
+      </div>
+    </div>
     ${inputRows}
     <div class="field full">
       <label>登録者</label>
@@ -1032,7 +1054,7 @@ function renderSalaryTab(employee, history){
     <h3 class="salary-history-title">給与履歴</h3>
     ${history.length ? `
     <table class="salary-history-table">
-      <thead><tr><th>適用日</th><th>合計</th><th>内訳</th><th>メモ</th><th>登録者</th><th></th></tr></thead>
+      <thead><tr><th>適用日</th><th>昇給月／支給月</th><th>合計</th><th>内訳</th><th>メモ</th><th>登録者</th><th></th></tr></thead>
       <tbody>${historyRows}</tbody>
     </table>` : `<div class="salary-hint">まだ履歴はありません</div>`}
   `;
@@ -1051,6 +1073,8 @@ modalGridSalary.addEventListener('input', recalcSalaryTotal);
 
 function fillSalaryForm(entry){
   document.getElementById('shEffectiveDate').value = isoToSlash(entry.effective_date);
+  document.getElementById('shRaiseMonth').value = entry.raise_month ?? '';
+  document.getElementById('shPaymentMonth').value = entry.payment_month ?? '';
   document.getElementById('shCreatedBy').value = entry.created_by ?? '';
   document.getElementById('shNote').value = entry.note ?? '';
   modalGridSalary.querySelectorAll('.salary-input').forEach(el => {
@@ -1061,6 +1085,8 @@ function fillSalaryForm(entry){
 
 function resetSalaryForm(){
   document.getElementById('shEffectiveDate').value = '';
+  document.getElementById('shRaiseMonth').value = '';
+  document.getElementById('shPaymentMonth').value = '';
   document.getElementById('shCreatedBy').value = '';
   document.getElementById('shNote').value = '';
   modalGridSalary.querySelectorAll('.salary-input').forEach(el => { el.value = ''; });
@@ -1108,6 +1134,10 @@ modalGridSalary.addEventListener('click', async (e) => {
   });
   payload.note = document.getElementById('shNote').value.trim() || null;
   payload.created_by = document.getElementById('shCreatedBy').value.trim() || null;
+  const raiseMonthVal = document.getElementById('shRaiseMonth').value;
+  const paymentMonthVal = document.getElementById('shPaymentMonth').value;
+  payload.raise_month = raiseMonthVal === '' ? null : Number(raiseMonthVal);
+  payload.payment_month = paymentMonthVal === '' ? null : Number(paymentMonthVal);
 
   const btn = document.getElementById('addSalaryHistoryBtn');
   const isEditing = !!editingSalaryHistoryId;
@@ -1169,6 +1199,16 @@ function renderModalField(f, employee){
     return `<div class="field full"><label>${f.label}</label><textarea data-key="${f.key}">${val ?? ''}</textarea></div>`;
   }
   if (f.type === 'textdate'){
+    if (f.key === 'birth_date'){
+      const age = val ? calcYears(new Date(val), new Date()) : '';
+      return `<div class="field">
+        <label>${f.label}</label>
+        <div class="birthdate-row">
+          <input type="text" data-key="birth_date" data-type="date" placeholder="yyyy/m/d" value="${escapeAttr(isoToSlash(val))}">
+          <span class="age-display" id="birthAgeDisplay">${age !== '' ? `（${age}歳）` : ''}</span>
+        </div>
+      </div>`;
+    }
     return `<div class="field"><label>${f.label}</label><input type="text" data-key="${f.key}" data-type="date" placeholder="yyyy/m/d" value="${escapeAttr(isoToSlash(val))}"></div>`;
   }
   return `<div class="field"><label>${f.label}</label><input type="${f.type}" data-key="${f.key}" value="${escapeAttr(val)}"></div>`;
@@ -1241,6 +1281,14 @@ async function openModal(employee){
     modalGridSalary.innerHTML = renderSalaryTab(employee, currentSalaryHistory);
   }
 }
+
+modalGrid.addEventListener('input', (e) => {
+  if (e.target.dataset.key !== 'birth_date') return;
+  const iso = slashToIso(e.target.value);
+  const disp = document.getElementById('birthAgeDisplay');
+  if (!disp) return;
+  disp.textContent = iso ? `（${calcYears(new Date(iso), new Date())}歳）` : '';
+});
 
 modalGrid.addEventListener('change', async (e) => {
   if (e.target.matches('.qual-select')){
