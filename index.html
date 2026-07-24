@@ -332,6 +332,26 @@
     border-radius:10px;
     padding:2px 8px;
   }
+  .updated-badge{
+    display:inline-block;
+    margin-left:8px;
+    font-size:11px;
+    font-weight:700;
+    color:var(--navy);
+    background:var(--blue-light);
+    border-radius:10px;
+    padding:2px 8px;
+  }
+  .last-updated-info{
+    grid-column:1 / -1;
+    font-size:12px;
+    color:var(--muted);
+    background:#FBF9F4;
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:8px 12px;
+    margin-bottom:4px;
+  }
   .empty-msg{ font-size:13px; color:var(--muted); padding:20px 0; text-align:center; }
 
   /* 編集モーダル */
@@ -879,6 +899,11 @@ function isRetired(e){
   return new Date(e.resignation_date) <= new Date();
 }
 
+function isRecentlyUpdated(e){
+  if (!e.updated_at) return false;
+  return (Date.now() - new Date(e.updated_at).getTime()) < 24 * 60 * 60 * 1000;
+}
+
 async function loadRoster(facility){
   const area = document.getElementById('rosterArea');
   area.innerHTML = '<div class="empty-msg">読み込み中...</div>';
@@ -908,13 +933,15 @@ function renderAlerts(){
   const area = document.getElementById('alertArea');
   const active = currentEmployeesAll.filter(e => !isRetired(e));
   const items = [];
+  const ALERT_WINDOW_DAYS = 90;
+  const URGENT_WINDOW_DAYS = 14;
 
   active.forEach(e => {
     if (e.contract_end_date){
       const d = daysUntil(e.contract_end_date);
-      if (d <= 30){
+      if (d <= ALERT_WINDOW_DAYS){
         items.push({
-          urgent: d <= 7,
+          urgent: d <= URGENT_WINDOW_DAYS,
           text: d < 0
             ? `${e.name}さん：契約が${Math.abs(d)}日前に満了しています（${isoToSlash(e.contract_end_date)}）`
             : `${e.name}さん：契約満了まであと${d}日（${isoToSlash(e.contract_end_date)}）`
@@ -924,10 +951,10 @@ function renderAlerts(){
     QUALIFICATION_EXPIRY_KEYS.forEach(({ nameKey, expiryKey }) => {
       if (e[expiryKey]){
         const d = daysUntil(e[expiryKey]);
-        if (d <= 30){
+        if (d <= ALERT_WINDOW_DAYS){
           const qName = e[nameKey] || '資格';
           items.push({
-            urgent: d <= 7,
+            urgent: d <= URGENT_WINDOW_DAYS,
             text: d < 0
               ? `${e.name}さん：${qName}の有効期限が${Math.abs(d)}日前に切れています（${isoToSlash(e[expiryKey])}）`
               : `${e.name}さん：${qName}の有効期限まであと${d}日（${isoToSlash(e[expiryKey])}）`
@@ -1018,12 +1045,13 @@ function renderRosterTable(){
 
   const rows = list.map(e => {
     const retired = isRetired(e);
+    const recentlyUpdated = isRecentlyUpdated(e);
     const tenureEnd = e.resignation_date ? new Date(e.resignation_date) : new Date();
     const tenure = e.hire_date ? calcTenure(new Date(e.hire_date), tenureEnd) : '';
     const age = e.birth_date ? calcYears(new Date(e.birth_date), new Date()) : '';
     return `<tr class="${retired ? 'retired-row' : ''}">
       <td>${e.employee_no ?? ''}</td>
-      <td><span class="name-link" data-id="${e.id}">${e.name ?? ''}</span>${retired ? '<span class="retired-badge">退職済み</span>' : ''}</td>
+      <td><span class="name-link" data-id="${e.id}">${e.name ?? ''}</span>${retired ? '<span class="retired-badge">退職済み</span>' : ''}${recentlyUpdated ? '<span class="updated-badge">更新</span>' : ''}</td>
       <td>${fmtDate(e.birth_date)}</td>
       <td>${age}</td>
       <td>${e.department_job ?? ''}</td>
@@ -1412,6 +1440,22 @@ function renderQualificationPair(index, employee){
   </div>`;
 }
 
+function fmtDateTime(v){
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d)) return '';
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+  return `${y}/${m}/${day} ${hh}:${mm}`;
+}
+
+function renderLastUpdatedInfo(employee){
+  if (!employee || !employee.updated_at) return '';
+  return `<div class="field full last-updated-info">
+    最終更新：${fmtDateTime(employee.updated_at)}　更新者：${employee.updated_by ?? '不明'}
+  </div>`;
+}
+
 async function openModal(employee){
   currentEditId = employee ? employee.id : null;
   editingSalaryHistoryId = null;
@@ -1421,7 +1465,8 @@ async function openModal(employee){
   const after = MODAL_FIELDS.slice(remarksIdx).map(f => renderModalField(f, employee)).join('');
   const qualPairs = [1, 2, 3, 4].map(i => renderQualificationPair(i, employee)).join('');
   const certRows = [1, 2, 3, 4].map(i => renderCertRow(i, employee)).join('');
-  modalGrid.innerHTML = before + qualPairs + certRows + after;
+  const lastUpdatedHtml = renderLastUpdatedInfo(employee);
+  modalGrid.innerHTML = lastUpdatedHtml + before + qualPairs + certRows + after;
   modalGridSalary.innerHTML = '<div class="salary-hint">読み込み中...</div>';
   modalTabs.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
   modalTabs.querySelector('[data-tab="basic"]').classList.add('active');
