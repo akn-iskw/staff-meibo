@@ -265,6 +265,21 @@
 
   .toolbar{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:8px; }
   .count-badge{ font-size:12px; color:var(--muted); }
+  .roster-filters{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-bottom:10px;
+  }
+  .roster-filters select{
+    font-family:inherit;
+    font-size:13px;
+    padding:6px 10px;
+    border:1px solid var(--border);
+    border-radius:6px;
+    background:#fff;
+    color:var(--ink);
+  }
   .toolbar-inline{
     display:flex;
     align-items:center;
@@ -821,6 +836,8 @@ function renderUploadLog(inserted, skipped, warnings, insertError, facility){
 let currentEmployees = [];
 let currentEmployeesAll = [];
 let showRetired = false;
+let jobFilter = '';
+let employmentTypeFilter = '';
 
 function isRetired(e){
   if (!e.resignation_date) return false;
@@ -842,8 +859,25 @@ async function loadRoster(facility){
 function renderRosterTable(){
   const area = document.getElementById('rosterArea');
   const retiredCount = currentEmployeesAll.filter(isRetired).length;
-  const list = showRetired ? currentEmployeesAll : currentEmployeesAll.filter(e => !isRetired(e));
+  let list = showRetired ? currentEmployeesAll : currentEmployeesAll.filter(e => !isRetired(e));
+  if (jobFilter) list = list.filter(e => (e.department_job ?? '') === jobFilter);
+  if (employmentTypeFilter) list = list.filter(e => (e.employment_type ?? '') === employmentTypeFilter);
   currentEmployees = list;
+
+  const jobOptionsSet = [...new Set(currentEmployeesAll.map(e => e.department_job).filter(Boolean))].sort();
+  const empTypeOptionsSet = [...new Set(currentEmployeesAll.map(e => e.employment_type).filter(Boolean))].sort();
+
+  const filterHtml = `
+    <div class="roster-filters">
+      <select id="jobFilterSelect">
+        <option value="">職種：すべて</option>
+        ${jobOptionsSet.map(j => `<option value="${j}" ${j===jobFilter?'selected':''}>${j}</option>`).join('')}
+      </select>
+      <select id="employmentTypeFilterSelect">
+        <option value="">雇用形態：すべて</option>
+        ${empTypeOptionsSet.map(t => `<option value="${t}" ${t===employmentTypeFilter?'selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>`;
 
   const toggleHtml = `<label class="show-retired-toggle">
     <input type="checkbox" id="showRetiredToggle" ${showRetired ? 'checked' : ''}>
@@ -854,12 +888,25 @@ function renderRosterTable(){
     area.innerHTML = `<div class="empty-msg">まだ社員データがありません</div>`;
     return;
   }
-  if (!list.length){
-    area.innerHTML = `${toggleHtml}<div class="empty-msg">在籍中の社員はいません</div>`;
+
+  const attachFilterListeners = () => {
     document.getElementById('showRetiredToggle').addEventListener('change', (e) => {
       showRetired = e.target.checked;
       renderRosterTable();
     });
+    document.getElementById('jobFilterSelect').addEventListener('change', (e) => {
+      jobFilter = e.target.value;
+      renderRosterTable();
+    });
+    document.getElementById('employmentTypeFilterSelect').addEventListener('change', (e) => {
+      employmentTypeFilter = e.target.value;
+      renderRosterTable();
+    });
+  };
+
+  if (!list.length){
+    area.innerHTML = `${filterHtml}${toggleHtml}<div class="empty-msg">条件に一致する社員がいません</div>`;
+    attachFilterListeners();
     return;
   }
 
@@ -880,6 +927,7 @@ function renderRosterTable(){
   }).join('');
 
   area.innerHTML = `
+    ${filterHtml}
     <div class="toolbar-inline">
       <div class="count-badge">${list.length}名</div>
       ${toggleHtml}
@@ -896,10 +944,7 @@ function renderRosterTable(){
       if (emp) openModal(emp);
     });
   });
-  document.getElementById('showRetiredToggle').addEventListener('change', (e) => {
-    showRetired = e.target.checked;
-    renderRosterTable();
-  });
+  attachFilterListeners();
 }
 
 function calcYears(from, to){
