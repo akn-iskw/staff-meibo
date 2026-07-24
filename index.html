@@ -337,8 +337,8 @@
     margin-left:8px;
     font-size:11px;
     font-weight:700;
-    color:var(--navy);
-    background:var(--blue-light);
+    color:#fff;
+    background:var(--gold);
     border-radius:10px;
     padding:2px 8px;
   }
@@ -613,10 +613,24 @@ let qualificationOptions = [];
 let currentUserEmail = '';
 let canViewSalary = false;
 let allowedFacilities = [];
+let displayNames = {};
 
 async function loadQualificationOptions(){
   const { data, error } = await sb.from('qualification_options').select('name').order('name');
   if (!error && data) qualificationOptions = data.map(d => d.name);
+}
+
+async function loadDisplayNames(){
+  const { data, error } = await sb.from('staff_display_names').select('email, display_name');
+  if (!error && data){
+    displayNames = {};
+    data.forEach(row => { displayNames[row.email] = row.display_name; });
+  }
+}
+
+function displayNameFor(email){
+  if (!email) return '不明';
+  return displayNames[email] || email;
 }
 
 async function loadPermissions(email){
@@ -656,6 +670,7 @@ async function showApp(email){
   initFacilityUI();
   if (currentFacility) loadRoster(currentFacility);
   loadQualificationOptions();
+  loadDisplayNames();
 }
 
 loginBtn.addEventListener('click', async () => {
@@ -1452,7 +1467,7 @@ function fmtDateTime(v){
 function renderLastUpdatedInfo(employee){
   if (!employee || !employee.updated_at) return '';
   return `<div class="field full last-updated-info">
-    最終更新：${fmtDateTime(employee.updated_at)}　更新者：${employee.updated_by ?? '不明'}
+    最終更新：${fmtDateTime(employee.updated_at)}　更新者：${displayNameFor(employee.updated_by)}
   </div>`;
 }
 
