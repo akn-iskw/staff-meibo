@@ -265,6 +265,32 @@
 
   .toolbar{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:8px; }
   .count-badge{ font-size:12px; color:var(--muted); }
+  .headcount-summary{
+    font-size:13px;
+    color:var(--muted);
+    margin-bottom:12px;
+  }
+  .alert-list{
+    list-style:none;
+    margin:0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .alert-list li{
+    font-size:13px;
+    color:var(--ink);
+    background:#FBF6EC;
+    border:1px solid #EBD9B4;
+    border-radius:8px;
+    padding:9px 12px;
+  }
+  .alert-list li.alert-urgent{
+    background:#FBEEDD;
+    border-color:var(--warn);
+    font-weight:600;
+  }
   .roster-filters{
     display:flex;
     gap:8px;
@@ -341,8 +367,10 @@
     grid-template-columns:1fr 1fr;
     gap:12px 16px;
   }
+  .qual-pair-grid-3{ grid-template-columns:1.4fr 1fr 1fr; }
   @media (max-width:480px){
     .qual-pair-grid{ grid-template-columns:1fr; }
+    .qual-pair-grid-3{ grid-template-columns:1fr; }
   }
   .modal-grid .field.full{ grid-column:1 / -1; }
   .modal-grid label{ display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
@@ -500,6 +528,11 @@
   </header>
 
   <main>
+    <div class="card hidden" id="alertCard">
+      <h2>お知らせ</h2>
+      <div id="alertArea"></div>
+    </div>
+
     <div class="card">
       <h2>入社連絡票を反映</h2>
       <div class="file-row">
@@ -524,6 +557,7 @@
         <label for="facilitySelectView">所属：</label>
         <select id="facilitySelectView"></select>
       </div>
+      <div class="headcount-summary" id="headcountSummary"></div>
       <div id="rosterArea"></div>
     </div>
   </main>
@@ -743,6 +777,7 @@ function parseEmployeeSheet(ws, warnings, sheetLabel){
     department_job: job || '',
     employment_type: employType,
     hire_date: toISODate(hireDate),
+    contract_end_date: termFlag === 'あり' ? toISODate(termEnd) : null,
     remarks: remark
   };
 }
@@ -854,6 +889,77 @@ async function loadRoster(facility){
   }
   currentEmployeesAll = data || [];
   renderRosterTable();
+  renderAlerts();
+  renderHeadcountSummary();
+}
+
+const QUALIFICATION_EXPIRY_KEYS = [1, 2, 3, 4].map(i => ({ nameKey:`qualification_${i}`, expiryKey:`qualification_${i}_expiry` }));
+
+function daysUntil(dateStr){
+  const target = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  target.setHours(0,0,0,0);
+  return Math.round((target - today) / (1000 * 60 * 60 * 24));
+}
+
+function renderAlerts(){
+  const card = document.getElementById('alertCard');
+  const area = document.getElementById('alertArea');
+  const active = currentEmployeesAll.filter(e => !isRetired(e));
+  const items = [];
+
+  active.forEach(e => {
+    if (e.contract_end_date){
+      const d = daysUntil(e.contract_end_date);
+      if (d <= 30){
+        items.push({
+          urgent: d <= 7,
+          text: d < 0
+            ? `${e.name}さん：契約が${Math.abs(d)}日前に満了しています（${isoToSlash(e.contract_end_date)}）`
+            : `${e.name}さん：契約満了まであと${d}日（${isoToSlash(e.contract_end_date)}）`
+        });
+      }
+    }
+    QUALIFICATION_EXPIRY_KEYS.forEach(({ nameKey, expiryKey }) => {
+      if (e[expiryKey]){
+        const d = daysUntil(e[expiryKey]);
+        if (d <= 30){
+          const qName = e[nameKey] || '資格';
+          items.push({
+            urgent: d <= 7,
+            text: d < 0
+              ? `${e.name}さん：${qName}の有効期限が${Math.abs(d)}日前に切れています（${isoToSlash(e[expiryKey])}）`
+              : `${e.name}さん：${qName}の有効期限まであと${d}日（${isoToSlash(e[expiryKey])}）`
+          });
+        }
+      }
+    });
+  });
+
+  if (!items.length){
+    card.classList.add('hidden');
+    area.innerHTML = '';
+    return;
+  }
+  items.sort((a,b) => (a.urgent === b.urgent) ? 0 : (a.urgent ? -1 : 1));
+  card.classList.remove('hidden');
+  area.innerHTML = `<ul class="alert-list">${items.map(i =>
+    `<li class="${i.urgent ? 'alert-urgent' : ''}">${i.text}</li>`
+  ).join('')}</ul>`;
+}
+
+function renderHeadcountSummary(){
+  const el = document.getElementById('headcountSummary');
+  if (!el) return;
+  const active = currentEmployeesAll.filter(e => !isRetired(e));
+  const counts = {};
+  active.forEach(e => {
+    const job = e.department_job || '未設定';
+    counts[job] = (counts[job] || 0) + 1;
+  });
+  const parts = Object.entries(counts).sort((a,b) => b[1]-a[1]).map(([job,n]) => `${job} ${n}名`);
+  el.textContent = `在籍 計${active.length}名（${parts.join('／')}）`;
 }
 
 function renderRosterTable(){
@@ -983,6 +1089,7 @@ const MODAL_FIELDS = [
   { key:'position_title', label:'役職名', type:'text' },
   { key:'employment_type', label:'雇用形態', type:'select', options:['正社員','契約社員','パート','その他'] },
   { key:'hire_date', label:'入社日', type:'textdate' },
+  { key:'contract_end_date', label:'契約終了日（契約社員のみ）', type:'textdate' },
   { key:'resignation_date', label:'退職日', type:'textdate' },
   { key:'remarks', label:'備考', type:'textarea' },
 ];
@@ -1274,15 +1381,17 @@ function renderCertRow(index, employee){
 function renderQualificationPair(index, employee){
   const qKey = `qualification_${index}`;
   const dKey = `qualification_${index}_date`;
+  const eKey = `qualification_${index}_expiry`;
   const currentVal = employee ? (employee[qKey] ?? '') : '';
   const dateVal = employee ? (employee[dKey] ?? '') : '';
+  const expiryVal = employee ? (employee[eKey] ?? '') : '';
   const optionSet = new Set(qualificationOptions);
   if (currentVal) optionSet.add(currentVal);
   const opts = [...optionSet].sort().map(o =>
     `<option value="${escapeAttr(o)}" ${o===currentVal?'selected':''}>${o}</option>`
   ).join('');
   return `<div class="field full">
-    <div class="qual-pair-grid">
+    <div class="qual-pair-grid qual-pair-grid-3">
       <div class="field">
         <label>保有資格${index}</label>
         <select data-key="${qKey}" class="qual-select">
@@ -1294,6 +1403,10 @@ function renderQualificationPair(index, employee){
       <div class="field">
         <label>資格取得日${index}</label>
         <input type="text" data-key="${dKey}" data-type="date" placeholder="yyyy/m/d" value="${escapeAttr(isoToSlash(dateVal))}">
+      </div>
+      <div class="field">
+        <label>有効期限${index}（任意）</label>
+        <input type="text" data-key="${eKey}" data-type="date" placeholder="yyyy/m/d" value="${escapeAttr(isoToSlash(expiryVal))}">
       </div>
     </div>
   </div>`;
