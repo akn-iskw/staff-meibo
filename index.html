@@ -720,6 +720,11 @@ function initFacilityUI(){
 }
 
 /* ---------- 入社連絡票の解析（従来ロジック） ---------- */
+function normalizeName(name){
+  if (!name) return name;
+  return name.trim().replace(/[\s\u3000]+/g, '\u3000');
+}
+
 function hwKanaToFullWidth(str){
   if (!str) return str;
   const dakuten = {
@@ -802,8 +807,8 @@ function parseEmployeeSheet(ws, warnings, sheetLabel){
 
   return {
     employee_no: no,
-    name,
-    kana: kanaHW ? hwKanaToFullWidth(kanaHW) : '',
+    name: normalizeName(name),
+    kana: kanaHW ? normalizeName(hwKanaToFullWidth(kanaHW)) : '',
     gender,
     birth_date: toISODate(birth),
     zip: zip ? String(zip) : null,
@@ -1620,6 +1625,8 @@ modalSaveBtn.addEventListener('click', async () => {
     return;
   }
   if (payload.employee_no !== null) payload.employee_no = Number(payload.employee_no);
+  if (payload.name) payload.name = normalizeName(payload.name);
+  if (payload.kana) payload.kana = normalizeName(payload.kana);
   if (!payload.facility){ modalError.textContent = '所属を選択してください'; return; }
 
   modalSaveBtn.disabled = true; modalSaveBtn.textContent = '保存中...';
