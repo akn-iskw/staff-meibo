@@ -1108,6 +1108,25 @@ function calcYears(from, to){
   if (m < 0 || (m === 0 && to.getDate() < from.getDate())) y--;
   return y;
 }
+
+function toWareki(dateObj){
+  if (isNaN(dateObj)) return '';
+  const eras = [
+    { name:'令和', start: new Date(2019, 4, 1) },
+    { name:'平成', start: new Date(1989, 0, 8) },
+    { name:'昭和', start: new Date(1926, 11, 25) },
+    { name:'大正', start: new Date(1912, 6, 30) },
+    { name:'明治', start: new Date(1868, 0, 25) },
+  ];
+  for (const era of eras){
+    if (dateObj >= era.start){
+      const eraYear = dateObj.getFullYear() - era.start.getFullYear() + 1;
+      const yearLabel = eraYear === 1 ? '元' : eraYear;
+      return `${era.name}${yearLabel}年${dateObj.getMonth()+1}月${dateObj.getDate()}日`;
+    }
+  }
+  return '';
+}
 function calcTenure(from, to){
   if (from > to) return '入社前';
   let y = to.getFullYear() - from.getFullYear();
@@ -1401,11 +1420,13 @@ function renderModalField(f, employee){
   if (f.type === 'textdate'){
     if (f.key === 'birth_date'){
       const age = val ? calcYears(new Date(val), new Date()) : '';
+      const wareki = val ? toWareki(new Date(val)) : '';
+      const extra = [wareki, age !== '' ? `${age}歳` : ''].filter(Boolean).join('・');
       return `<div class="field">
         <label>${f.label}</label>
         <div class="birthdate-row">
           <input type="text" data-key="birth_date" data-type="date" placeholder="yyyy/m/d" value="${escapeAttr(isoToSlash(val))}">
-          <span class="age-display" id="birthAgeDisplay">${age !== '' ? `（${age}歳）` : ''}</span>
+          <span class="age-display" id="birthAgeDisplay">${extra ? `（${extra}）` : ''}</span>
         </div>
       </div>`;
     }
@@ -1510,7 +1531,10 @@ modalGrid.addEventListener('input', (e) => {
   const iso = slashToIso(e.target.value);
   const disp = document.getElementById('birthAgeDisplay');
   if (!disp) return;
-  disp.textContent = iso ? `（${calcYears(new Date(iso), new Date())}歳）` : '';
+  if (!iso){ disp.textContent = ''; return; }
+  const d = new Date(iso);
+  const extra = [toWareki(d), `${calcYears(d, new Date())}歳`].filter(Boolean).join('・');
+  disp.textContent = extra ? `（${extra}）` : '';
 });
 
 modalGrid.addEventListener('change', async (e) => {
