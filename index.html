@@ -589,9 +589,11 @@
     <div class="modal-tabs" id="modalTabs">
       <button type="button" class="modal-tab-btn active" data-tab="basic">基本情報</button>
       <button type="button" class="modal-tab-btn" data-tab="salary">給与</button>
+      <button type="button" class="modal-tab-btn" data-tab="mynumber">マイナンバー</button>
     </div>
     <div class="modal-grid" id="modalGridBasic"></div>
     <div class="modal-grid hidden" id="modalGridSalary"></div>
+    <div class="modal-grid hidden" id="modalGridMyNumber"></div>
     <div class="modal-actions">
       <button class="danger hidden" id="modalDeleteBtn">削除</button>
       <div style="flex:1;"></div>
@@ -612,6 +614,7 @@ let currentFacility = FACILITIES[0];
 let qualificationOptions = [];
 let currentUserEmail = '';
 let canViewSalary = false;
+let canViewMyNumber = false;
 let allowedFacilities = [];
 let displayNames = {};
 
@@ -634,13 +637,16 @@ function displayNameFor(email){
 }
 
 async function loadPermissions(email){
-  const { data, error } = await sb.from('staff_permissions').select('can_view_salary, allowed_facilities').eq('email', email).maybeSingle();
+  const { data, error } = await sb.from('staff_permissions').select('can_view_salary, can_view_my_number, allowed_facilities').eq('email', email).maybeSingle();
   canViewSalary = !error && data ? !!data.can_view_salary : false;
+  canViewMyNumber = !error && data ? !!data.can_view_my_number : false;
   allowedFacilities = (!error && data && Array.isArray(data.allowed_facilities))
     ? FACILITIES.filter(f => data.allowed_facilities.includes(f))
     : [];
   const salaryTabBtn = document.querySelector('.modal-tab-btn[data-tab="salary"]');
   if (salaryTabBtn) salaryTabBtn.classList.toggle('hidden', !canViewSalary);
+  const myNumberTabBtn = document.querySelector('.modal-tab-btn[data-tab="mynumber"]');
+  if (myNumberTabBtn) myNumberTabBtn.classList.toggle('hidden', !canViewMyNumber);
 }
 
 /* ---------- 認証まわり ---------- */
@@ -1176,6 +1182,7 @@ const modalOverlay = document.getElementById('modalOverlay');
 const modalTitle = document.getElementById('modalTitle');
 const modalGrid = document.getElementById('modalGridBasic');
 const modalGridSalary = document.getElementById('modalGridSalary');
+const modalGridMyNumber = document.getElementById('modalGridMyNumber');
 const modalTabs = document.getElementById('modalTabs');
 const modalDeleteBtn = document.getElementById('modalDeleteBtn');
 const modalCancelBtn = document.getElementById('modalCancelBtn');
@@ -1188,10 +1195,68 @@ modalTabs.querySelectorAll('.modal-tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     modalTabs.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    const isSalary = btn.dataset.tab === 'salary';
-    modalGrid.classList.toggle('hidden', isSalary);
-    modalGridSalary.classList.toggle('hidden', !isSalary);
+    const tab = btn.dataset.tab;
+    modalGrid.classList.toggle('hidden', tab !== 'basic');
+    modalGridSalary.classList.toggle('hidden', tab !== 'salary');
+    modalGridMyNumber.classList.toggle('hidden', tab !== 'mynumber');
   });
+});
+
+const MYNUMBER_FIELDS = [
+  { key:'my_number', label:'マイナンバー（個人番号）' },
+  { key:'basic_pension_number', label:'基礎年金番号' },
+  { key:'health_insurance_number', label:'健康保険被保険者番号' },
+  { key:'pension_insurance_number', label:'厚生年金保険番号' },
+  { key:'employment_insurance_number', label:'雇用保険被保険者番号' },
+];
+
+async function loadSensitiveNumbers(employeeId){
+  const { data, error } = await sb.from('sensitive_numbers').select('*').eq('employee_id', employeeId).maybeSingle();
+  return error ? null : data;
+}
+
+function renderMyNumberTab(employee, record){
+  if (!employee){
+    return `<div class="salary-hint">社員情報を保存すると、マイナンバー・社会保険番号を登録できるようになります</div>`;
+  }
+  const lastUpdated = record && record.updated_at
+    ? `<div class="last-updated-info field full">最終更新：${fmtDateTime(record.updated_at)}　更新者：${displayNameFor(record.updated_by)}</div>`
+    : '';
+  const rows = MYNUMBER_FIELDS.map(f =>
+    `<div class="field full"><label>${f.label}</label><input type="text" class="mynumber-input" data-mnkey="${f.key}" value="${escapeAttr(record ? (record[f.key] ?? '') : '')}"></div>`
+  ).join('');
+  return `
+    <div class="salary-hint">この情報は限られた担当者にしか表示されません。取り扱いには十分ご注意ください。</div>
+    ${lastUpdated}
+    ${rows}
+    <button type="button" class="primary" id="saveMyNumberBtn">この内容を保存</button>
+    <div id="myNumberError" class="salary-hint"></div>
+  `;
+}
+
+modalGridMyNumber.addEventListener('click', async (e) => {
+  if (!e.target.matches('#saveMyNumberBtn')) return;
+  if (!currentEditId) return;
+  const errEl = document.getElementById('myNumberError');
+  errEl.textContent = '';
+  const payload = { employee_id: currentEditId };
+  modalGridMyNumber.querySelectorAll('.mynumber-input').forEach(el => {
+    const v = el.value.trim();
+    payload[el.dataset.mnkey] = v === '' ? null : v;
+  });
+
+  const btn = document.getElementById('saveMyNumberBtn');
+  btn.disabled = true; btn.textContent = '保存中...';
+  const { error } = await sb.from('sensitive_numbers').upsert(payload, { onConflict: 'employee_id' });
+  btn.disabled = false; btn.textContent = 'この内容を保存';
+
+  if (error){
+    errEl.textContent = '保存に失敗しました：' + error.message;
+    return;
+  }
+  const emp = currentEmployees.find(e => e.id === currentEditId);
+  const record = await loadSensitiveNumbers(currentEditId);
+  modalGridMyNumber.innerHTML = renderMyNumberTab(emp, record);
 });
 
 async function loadSalaryHistory(employeeId){
@@ -1509,10 +1574,12 @@ async function openModal(employee){
   const lastUpdatedHtml = renderLastUpdatedInfo(employee);
   modalGrid.innerHTML = lastUpdatedHtml + before + qualPairs + certRows + after;
   modalGridSalary.innerHTML = '<div class="salary-hint">読み込み中...</div>';
+  modalGridMyNumber.innerHTML = '<div class="salary-hint">読み込み中...</div>';
   modalTabs.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
   modalTabs.querySelector('[data-tab="basic"]').classList.add('active');
   modalGrid.classList.remove('hidden');
   modalGridSalary.classList.add('hidden');
+  modalGridMyNumber.classList.add('hidden');
   modalDeleteBtn.classList.toggle('hidden', !employee);
   modalError.textContent = '';
   modalOverlay.classList.remove('hidden');
@@ -1523,6 +1590,13 @@ async function openModal(employee){
   currentSalaryHistory = employee ? await loadSalaryHistory(employee.id) : [];
   if (currentEditId === (employee ? employee.id : null)){
     modalGridSalary.innerHTML = renderSalaryTab(employee, currentSalaryHistory);
+  }
+
+  if (canViewMyNumber){
+    const record = employee ? await loadSensitiveNumbers(employee.id) : null;
+    if (currentEditId === (employee ? employee.id : null)){
+      modalGridMyNumber.innerHTML = renderMyNumberTab(employee, record);
+    }
   }
 }
 
